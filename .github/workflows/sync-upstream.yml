@@ -1,0 +1,54 @@
+# Keeps this fork in step with ZingerLittleBee/Heeler: main, tags and releases.
+# Needs a SYNC_TOKEN secret (fine-grained PAT on this repo: Contents + Workflows read/write).
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  UPSTREAM: ZingerLittleBee/Heeler
+  GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge upstream main
+        run: gh api -X POST repos/${{ github.repository }}/merge-upstream -f branch=main --jq '"\(.merge_type): \(.message)"'
+
+      # Keep upstream CI/release workflows from running here before tags arrive.
+      - name: Disable upstream workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/${{ github.repository }}/actions/workflows --jq '.workflows[] | select(.path != ".github/workflows/sync-upstream.yml" and .state == "active") | .id' |
+            while read -r id; do gh api -X PUT repos/${{ github.repository }}/actions/workflows/$id/disable; echo "disabled $id"; done
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.SYNC_TOKEN }}
+          fetch-depth: 0
+
+      - name: Sync tags
+        run: |
+          git fetch --no-tags https://github.com/$UPSTREAM.git '+refs/tags/*:refs/tags/*'
+          git push origin --tags
+
+      - name: Copy missing releases
+        run: |
+          have=$(gh release list -R ${{ github.repository }} -L 1000 --json tagName --jq '.[].tagName')
+          gh release list -R $UPSTREAM -L 1000 --json tagName --jq 'reverse | .[].tagName' |
+            while read -r tag; do
+              grep -qxF "$tag" <<<"$have" && continue
+              gh release view "$tag" -R $UPSTREAM --json name,body,isPrerelease > rel.json
+              flags=(); [ "$(jq -r .isPrerelease rel.json)" = true ] && flags+=(--prerelease)
+              jq -r .body rel.json > notes.md
+              gh release create "$tag" -R ${{ github.repository }} --verify-tag --title "$(jq -r .name rel.json)" --notes-file notes.md "${flags[@]}"
+              echo "released $tag"
+            done
