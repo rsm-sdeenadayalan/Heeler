@@ -20,7 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Merge upstream main
-        run: gh api -X POST repos/${{ github.repository }}/merge-upstream -f branch=main --jq '"\(.merge_type): \(.message)"'
+        run: |
+          gh api -X POST repos/${{ github.repository }}/merge-upstream -f branch=main --jq '"\(.merge_type): \(.message)"'
 
       # Keep upstream CI/release workflows from running here before tags arrive.
       - name: Disable upstream workflows
