@@ -9,6 +9,21 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Give a Host more than one route — its LAN address for home, say, and an
+  overlay network or Jump Host for everywhere else. Add Route in Edit Host;
+  Heeler tries every route each time it connects and keeps the first that
+  reaches the Host, starting routes over this device's own network a moment
+  ahead, so at home the LAN address wins without an overlay network ever
+  starting. Pairing adds every address the Pairing Code offers. A Host's key
+  is trusted once for all of its routes: another machine answering one of
+  its addresses is refused, and adding an overlay address no longer asks to
+  confirm the key again. (#437)
+- See which route a Host is connected through. Its detail page opens with
+  the connection's status and a Reconnect or Stop button, lists every route
+  with the one in use marked, and when no route reaches the Host shows why
+  each one failed. Edit Host lists routes as rows that each open their own
+  page, and a new Host starts from Add Route. Run Checks Again moves beside
+  the Preflight heading. (#438)
 - Reach a Host through Tailscale, ZeroTier, or EasyTier without turning on a
   VPN. Add a network in Settings › Overlay Networks, then choose it under
   Network when editing the Host. Heeler joins the network itself while it is

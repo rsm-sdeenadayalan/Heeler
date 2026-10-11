@@ -21,12 +21,12 @@ struct HostFormView: View {
     @State private var isConfirmingRSAKeyReplacement = false
     @State private var deviceKeyReplacementError: String?
     @State private var rsaKeyReplacementError: String?
-    @State private var isChoosingOverlayPeer = false
+    /// The route page on screen: Add Route's, or a listed route's.
+    @State private var routePath: [HostRoutePage] = []
+    /// Reorder and delete controls for the Routes list, from its header.
+    @State private var isEditingRoutes = false
     @FocusState private var isUsernameFocused: Bool
     @Environment(\.dismiss) private var dismiss
-    /// Absent in previews and hosting tests; the Network picker then offers
-    /// only Direct (plus the Host's current choice).
-    @Environment(OverlayNetworkStore.self) private var overlayNetworks: OverlayNetworkStore?
 
     private let credentials = HostCredentialsProvider()
 
@@ -51,9 +51,21 @@ struct HostFormView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $routePath) {
             Form {
                 formSections
+            }
+            .environment(\.editMode, .constant(isEditingRoutes ? .active : .inactive))
+            .onChange(of: draft.routes.count) { _, count in
+                if count < 2 { isEditingRoutes = false }
+            }
+            .navigationDestination(for: HostRoutePage.self) { page in
+                switch page {
+                case .route(let routeID):
+                    HostRouteFormView(draft: $draft, routeID: routeID, otherHosts: otherHosts)
+                case .newRoute:
+                    NewHostRouteView(draft: $draft, otherHosts: otherHosts)
+                }
             }
             .navigationTitle(editing == nil ? "Add Host" : "Edit Host")
             .navigationBarTitleDisplayMode(.inline)
@@ -113,20 +125,6 @@ struct HostFormView: View {
                     "Every Host using RSA Key authentication will reject the replacement "
                         + "until you register its new public key on that Host.")
             }
-            .sheet(isPresented: $isChoosingOverlayPeer) {
-                if let overlayNetworks, let network = selectedOverlayNetwork {
-                    OverlayPeerPickerView(
-                        network: network,
-                        target: draft.overlayPeerTarget,
-                        chosenAddress: draft.overlayPeerAddress,
-                        model: OverlayPeerPickerModel(store: overlayNetworks, networkID: network.id),
-                        // The Host being edited is not another Host to warn about.
-                        hosts: store.hosts.filter { $0.id != editing?.id }
-                    ) { candidate, style in
-                        draft.applyOverlayPeer(candidate, style: style)
-                    }
-                }
-            }
             .task {
                 if focusesUsername { isUsernameFocused = true }
                 loadDeviceKey()
@@ -141,20 +139,8 @@ struct HostFormView: View {
     /// expressions instead of one very long modifier chain.
     @ViewBuilder
     private var formSections: some View {
-        // The network decides which address to enter (and offers its peers
-        // beside it), so it leads the form once there is one to choose.
-        if networkLeadsForm {
-            networkSection
-        }
-
         Section("Host") {
             TextField("Name (optional)", text: $draft.name)
-            TextField("Address", text: $draft.address)
-                .textContentType(.URL)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-            TextField("Port", text: $draft.port)
-                .keyboardType(.numberPad)
             TextField("User", text: $draft.username)
                 .textContentType(.username)
                 .autocorrectionDisabled()
@@ -162,6 +148,80 @@ struct HostFormView: View {
                 .focused($isUsernameFocused)
         }
 
+        routesSection
+
+        authenticationSection
+
+        Section {
+            TextField("Session name", text: $draft.sessionName)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+        } header: {
+            Text("herdr Session")
+        } footer: {
+            Text("Leave blank for the default herdr session.")
+        }
+    }
+
+    /// Every route, one row each opening its own page, then Add Route.
+    private var routesSection: some View {
+        Section {
+            ForEach(draft.routes) { route in
+                NavigationLink(value: HostRoutePage.route(route.id)) {
+                    HostRouteRow(route: route)
+                }
+                .deleteDisabled(draft.routes.count < 2)
+            }
+            .onDelete { draft.removeRoutes(atOffsets: $0) }
+            .onMove { draft.moveRoutes(fromOffsets: $0, toOffset: $1) }
+            if !isEditingRoutes {
+                addRouteButton
+            }
+        } header: {
+            HStack {
+                Text("Routes")
+                Spacer()
+                if draft.routes.count > 1 {
+                    Button(isEditingRoutes ? "Done" : "Edit") {
+                        withAnimation { isEditingRoutes.toggle() }
+                    }
+                    .font(.subheadline)
+                    .textCase(nil)
+                    .accessibilityLabel(isEditingRoutes ? "Done Editing Routes" : "Edit Routes")
+                }
+            }
+        } footer: {
+            if draft.routes.isEmpty {
+                Text(
+                    "Add the address Heeler connects to: directly, over an overlay network, "
+                        + "or through a Jump Host.")
+            } else if draft.routes.count > 1 {
+                Text(
+                    "Heeler tries every route each time it connects and keeps the first that "
+                        + "reaches the Host. Routes over this device's own network start first; "
+                        + "the rest start a moment later.")
+            } else {
+                Text(
+                    "Add another way to reach this Host, such as its LAN address at home and "
+                        + "an overlay network or Jump Host elsewhere.")
+            }
+        }
+    }
+
+    private var addRouteButton: some View {
+        Button {
+            routePath.append(.newRoute)
+        } label: {
+            Label("Add Route", systemImage: "plus")
+        }
+    }
+
+    /// The Host being edited is not another Host for the peer picker to tag.
+    private var otherHosts: [Host] {
+        store.hosts.filter { $0.id != editing?.id }
+    }
+
+    private var authenticationSection: some View {
         Section {
             Picker("Method", selection: $draft.authMethod) {
                 Text("Device Key").tag(Host.AuthMethod.deviceKey)
@@ -203,156 +263,6 @@ struct HostFormView: View {
                 EmptyView()
             }
         }
-
-        Section {
-            TextField("Session name", text: $draft.sessionName)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-        } header: {
-            Text("herdr Session")
-        } footer: {
-            Text("Leave blank for the default herdr session.")
-        }
-
-        Section {
-            TextField("Jump Host address (optional)", text: $draft.jumpAddress)
-                .textContentType(.URL)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-            if draft.usesJumpHost {
-                TextField("Jump Host port", text: $draft.jumpPort)
-                    .keyboardType(.numberPad)
-                TextField("Jump Host user (blank = same as Host)", text: $draft.jumpUsername)
-                    .textContentType(.username)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-            }
-        } header: {
-            Text("Jump Host")
-        } footer: {
-            if draft.usesJumpHost {
-                Text(jumpHostFooter)
-            } else {
-                Text("Leave blank to connect to the Host directly.")
-            }
-        }
-
-        if !networkLeadsForm {
-            networkSection
-        }
-    }
-
-    /// Without Overlay Networks the Network section is only a pointer to
-    /// Settings, so it stays at the end, out of a direct Host's way.
-    private var networkLeadsForm: Bool {
-        !(overlayNetworks?.networks.isEmpty ?? true) || draft.overlayNetworkID != nil
-    }
-
-    /// The Overlay Network the draft names, when it still exists.
-    private var selectedOverlayNetwork: OverlayNetwork? {
-        draft.overlayNetworkID.flatMap { overlayNetworks?.network(id: $0) }
-    }
-
-    /// Under the network: pick the first hop's address (the Host's, or the
-    /// Jump Host's when one is set) from its peers instead of typing it.
-    /// Once that address is a known peer's, as after Add on a machine in
-    /// Settings, the row names the peer like a picker showing its choice.
-    /// ZeroTier reports no member addresses; its footer says where they are.
-    @ViewBuilder
-    private var overlayPeerChooser: some View {
-        if let network = selectedOverlayNetwork, OverlayPeerList.offersPeers(network.kind) {
-            Button {
-                isChoosingOverlayPeer = true
-            } label: {
-                if let chosen = chosenOverlayPeer(on: network) {
-                    // Styled like the Network picker above, not as a tinted button.
-                    LabeledContent {
-                        HStack(spacing: 6) {
-                            Text(chosen.displayName)
-                                .foregroundStyle(.secondary)
-                            Image(systemName: "chevron.right")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                                .accessibilityHidden(true)
-                        }
-                    } label: {
-                        // `.primary` would resolve to the button's tint.
-                        Text(network.kind == .tailscale ? "Machine" : "Peer")
-                            .foregroundStyle(Color.primary)
-                    }
-                } else {
-                    Text(OverlayPeerList.chooseTitle(for: network.kind))
-                }
-            }
-            .accessibilityHint("Lists the peers of \(network.displayName)")
-        }
-    }
-
-    /// The peer the first hop already dials, from the network's last report.
-    private func chosenOverlayPeer(on network: OverlayNetwork) -> OverlayPeerCandidate? {
-        let peers = overlayNetworks?.details[network.id]?.peers ?? []
-        return OverlayPeerList.chosen(
-            among: OverlayPeerList.candidates(from: peers), address: draft.overlayPeerAddress)
-    }
-
-    /// Direct, or one of Settings › Overlay Networks. A Host still naming a
-    /// removed network keeps that choice visible as unavailable instead of
-    /// silently becoming Direct.
-    private var networkSection: some View {
-        let networks = overlayNetworks?.networks ?? []
-        let selectionIsMissing =
-            draft.overlayNetworkID.map { id in !networks.contains { $0.id == id } } ?? false
-        return Section {
-            Picker("Network", selection: $draft.overlayNetworkID) {
-                Text("Direct").tag(UUID?.none)
-                ForEach(networks) { network in
-                    Text("\(network.displayName) (\(network.kind.displayName))")
-                        .tag(UUID?.some(network.id))
-                }
-                if selectionIsMissing {
-                    Text("Unavailable network").tag(draft.overlayNetworkID)
-                }
-            }
-            overlayPeerChooser
-        } header: {
-            Text("Network")
-        } footer: {
-            Text(networkFooter(hasNetworks: !networks.isEmpty, selectionIsMissing: selectionIsMissing))
-        }
-    }
-
-    private func networkFooter(hasNetworks: Bool, selectionIsMissing: Bool) -> String {
-        if selectionIsMissing {
-            return "This Host's overlay network was removed. Choose another network or Direct."
-        }
-        guard draft.overlayNetworkID != nil else {
-            return hasNetworks
-                ? "Direct uses this device's own network connection."
-                : "Direct uses this device's own network connection. Add Tailscale, ZeroTier, "
-                    + "or EasyTier networks in Settings › Overlay Networks."
-        }
-        let target = draft.usesJumpHost ? "the Jump Host" : "this Host"
-        let base = "Heeler reaches \(target) through this network without turning on a VPN."
-        guard let network = selectedOverlayNetwork, !OverlayPeerList.offersPeers(network.kind) else {
-            return base
-        }
-        return base + " ZeroTier does not report member addresses; copy \(target)'s managed IP "
-            + "from ZeroTier Central or your controller."
-    }
-
-    private var jumpHostFooter: String {
-        let credentialRequirement =
-            switch draft.authMethod {
-            case .deviceKey:
-                "Both machines must authorize the Device Key."
-            case .rsaKey:
-                "Both machines must authorize the RSA Key."
-            case .password:
-                "Both machines must accept the same password; separate passwords are not supported."
-            }
-        return "The Host's Address and Port are resolved from the Jump Host, usually through "
-            + "a loopback-only reverse tunnel. \(credentialRequirement) You confirm each "
-            + "machine's host key fingerprint independently on first connect."
     }
 
     @ViewBuilder
@@ -367,9 +277,13 @@ struct HostFormView: View {
                 UIPasteboard.general.string = authorizedKeysLine
                 didCopyKeyLine = true
             } label: {
-                Label(
-                    didCopyKeyLine ? "Copied" : "Copy authorized_keys Line",
-                    systemImage: didCopyKeyLine ? "checkmark" : "doc.on.doc")
+                Label {
+                    Text(didCopyKeyLine ? "Copied" : "Copy authorized_keys Line")
+                } icon: {
+                    // The tall two-page glyph otherwise outgrows the text.
+                    Image(systemName: didCopyKeyLine ? "checkmark" : "doc.on.doc")
+                        .font(.footnote)
+                }
             }
         } else {
             Label(
@@ -398,9 +312,13 @@ struct HostFormView: View {
                 UIPasteboard.general.string = rsaPublicKeyLine
                 didCopyKeyLine = true
             } label: {
-                Label(
-                    didCopyKeyLine ? "Copied" : "Copy RSA Public Key",
-                    systemImage: didCopyKeyLine ? "checkmark" : "doc.on.doc")
+                Label {
+                    Text(didCopyKeyLine ? "Copied" : "Copy RSA Public Key")
+                } icon: {
+                    // The tall two-page glyph otherwise outgrows the text.
+                    Image(systemName: didCopyKeyLine ? "checkmark" : "doc.on.doc")
+                        .font(.footnote)
+                }
             }
         } else {
             Label(

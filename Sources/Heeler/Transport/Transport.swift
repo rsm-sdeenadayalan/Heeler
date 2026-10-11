@@ -3,6 +3,10 @@ import Foundation
 /// The app-side abstraction that executes herdr API requests over SSH.
 /// UI code talks to Transport, never to SSH primitives (ADR 0011).
 protocol Transport: Sendable {
+    /// The catalog route this connection reached (ADR 0022); nil where the
+    /// transport does not know one.
+    var routeID: UUID? { get }
+
     /// Verifies the server speaks a protocol version we support and returns
     /// its identity. Must be the first herdr API call on every new connection
     /// path; Host-local session discovery may run before it.
@@ -281,6 +285,8 @@ protocol Transport: Sendable {
 }
 
 extension Transport {
+    var routeID: UUID? { nil }
+
     /// Test doubles and alternative transports that do not expose Host-level
     /// session discovery can opt out without inventing sessions.
     func listSessions() async throws -> [HerdrSession] { [] }
@@ -972,6 +978,10 @@ indirect enum TransportError: Error, Sendable, Equatable {
     /// wrapped in `.jumpHostFailed` — the overlay sits in front of the Jump
     /// Host, which was never contacted (ADR 0021).
     case overlayFailed(network: String, reason: OverlayFailure)
+    /// Every one of the Host's routes failed (ADR 0022). Each failure is
+    /// that route's own, named by the route; a Host with a single route
+    /// reports its failure directly instead.
+    case noRouteReached([RouteFailure])
     /// The Jump Host accepted SSH authentication but its server or key policy
     /// prohibits the direct-tcpip channel required to reach the Host.
     case tcpForwardingUnavailable
@@ -1071,6 +1081,13 @@ indirect enum TransportError: Error, Sendable, Equatable {
         // rebooting VPS should reconnect on its own, a rejected key should not.
         case .jumpHostFailed(let underlying):
             underlying.isRetryable
+        // Any route that may come back on its own is worth another race: the
+        // LAN address refused away from home must not stop the overlay route.
+        // A changed key on a route that cannot reach another machine stops
+        // the race, as it stops a single route, until the user decides.
+        case .noRouteReached(let failures):
+            !failures.contains(where: \.isHostKeySecurityFailure)
+                && failures.contains { $0.error.isRetryable }
         // A peer that is asleep, a slow node, or a device awaiting approval
         // can recover on its own; a missing network, a sign-in, a malformed
         // setting, or a start failure that outlasted its retries needs the user.
@@ -1083,6 +1100,27 @@ indirect enum TransportError: Error, Sendable, Equatable {
                 false
             }
         }
+    }
+}
+
+/// One route's failure in `TransportError.noRouteReached`.
+struct RouteFailure: Sendable, Equatable {
+    /// The route as `SSHRoute.label` names it.
+    let route: String
+    /// Whether the route's address may name another machine on the
+    /// device's current network (`SSHRoute.mayNameAnotherMachine`).
+    let mayNameAnotherMachine: Bool
+    let error: TransportError
+    /// The catalog route that failed (`SSHRoute.id`), when known.
+    var routeID: UUID? = nil
+
+    /// A changed host key on a route whose address names the same machine
+    /// wherever the device is: an Overlay Network address, one resolved by a
+    /// Jump Host, or a public address or DNS name. A LAN address can be
+    /// answered by another machine away from home, so its changed key is
+    /// excused.
+    var isHostKeySecurityFailure: Bool {
+        !mayNameAnotherMachine && error.isHostKeySecurityFailure
     }
 }
 
