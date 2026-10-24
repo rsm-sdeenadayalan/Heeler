@@ -56,6 +56,16 @@ Entries reference the pull request that made the change.
   Host's name marked with its connection state, and they open on Chat. By
   Host headers say when their Host is connecting, reconnecting or
   unavailable. (#486)
+- Chat loads earlier messages when you pull down past the top of a
+  conversation and let go, instead of as soon as you scroll near the top.
+  The top of the list says Pull, then Release with a tap of haptic
+  feedback once the pull goes far enough, then shows a spinner while they
+  load. Pushing back before you let go cancels it. A conversation too short
+  to fill the screen still loads them by itself. (#507)
+- Chat's Collapse Steps and Jump to Latest buttons are smaller, so they
+  cover less of the conversation; they are as easy to tap. (#507)
+- The expanded Agent title centres on the screen, and a grip under it
+  resizes it, so a long task title can wrap into the room you give it. (#485)
 
 ### Fixed
 
@@ -64,6 +74,10 @@ Entries reference the pull request that made the change.
   (#504)
 - Keep Blocked card answers reachable by scrolling at large text sizes
   when the keyboard leaves less room, including from sidebar search. (#505)
+- Line up a running tool's spinner in Chat with the first line of its
+  title, instead of below it. (#507)
+- Stop Chat from jittering when you pull past the newest message in a
+  conversation you just opened. (#507)
 - Prevent a freeze when returning from a Shell Terminal to the Agent while
   the outgoing terminal surface is still updating. (#481)
 - Center the subagent glyph on its Chat row's title instead of riding
@@ -77,6 +91,11 @@ Entries reference the pull request that made the change.
   fades out at the edge it scrolls past. (#480)
 - Show long Composer notices whole, up to six lines, instead of cutting
   them after three, which could hide what to do next. (#482)
+- Move the Agents and Terminals filter, presentation and new-item controls
+  to the bottom right of the sidebar, on an iPhone Duo's inner display and in
+  landscape on large iPhones, so they are within reach and the sidebar title
+  stays whole. On those layouts, the sidebar can also be dragged wider, up
+  to 600 points. (#485)
 
 ## [0.1.15] - 2026-10-19
 
