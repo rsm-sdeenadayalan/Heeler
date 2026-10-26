@@ -30,7 +30,7 @@ its contract.
 | Task | Follow these owners | Contract and focused coverage |
 | --- | --- | --- |
 | Host setup, preflight, credentials | [HostOnboardingStore](../../Sources/Heeler/Hosts/HostOnboardingStore.swift), [Preflight](../../Sources/Heeler/Hosts/Preflight.swift), [TransportConnector](../../Sources/Heeler/Hosts/TransportConnector.swift) | [HostOnboardingStoreTests](../../Tests/HeelerTests/HostOnboardingStoreTests.swift), [PreflightReportTests](../../Tests/HeelerTests/PreflightReportTests.swift); [RSA ADR 0019](../adr/0019-rsa-sha2-key-authentication.md), [Herdr Endpoint ADR 0023](../adr/0023-herdr-endpoint-in-pairing-code-v2.md) |
-| Installed plugin version and feature notes | [HeelerPlugin](../../Sources/Heeler/Hosts/HeelerPlugin.swift) (version, compatibility, presentation), `Transport.readHeelerPlugin` (`plugin.list`, decoded by [HeelerPluginInstallation](../../Sources/Heeler/Transport/HeelerPluginInstallation.swift)), read by `HostOnboardingStore` and [HeelerPluginStatusStore](../../Sources/Heeler/Console/HeelerPluginStatusStore.swift) for Settings | [HeelerPluginTests](../../Tests/HeelerTests/HeelerPluginTests.swift); the shared `plugin/test-vectors/plugin-version-v1.json` pins the bundled version |
+| Installed plugin version and feature notes | [HeelerPlugin](../../Sources/Heeler/Hosts/HeelerPlugin.swift) (version, compatibility, presentation), `Transport.readHeelerPlugin` (`plugin.list`, decoded by [HeelerPluginInstallation](../../Sources/Heeler/Transport/HeelerPluginInstallation.swift)), read by `HostOnboardingStore` and [HeelerPluginStatusStore](../../Sources/Heeler/Console/HeelerPluginStatusStore.swift) for Settings; the notice's action runs `Transport.runHeelerPluginStep` from `HostOnboardingStore.runPluginAction`, an install finding Node.js through [NodeToolchainProbe](../../Sources/Heeler/Transport/NodeToolchainProbe.swift) ([ADR 0027](../adr/0027-update-the-plugin-from-the-app.md)) | [HeelerPluginTests](../../Tests/HeelerTests/HeelerPluginTests.swift), [HostOnboardingStoreTests](../../Tests/HeelerTests/HostOnboardingStoreTests.swift), [test-node-toolchain-probe.py](../../scripts/test-node-toolchain-probe.py) (`make test-tools`); the shared `plugin/test-vectors/plugin-version-v1.json` pins the bundled version |
 | Host Routes (several ways to reach one Host), route racing, Host-scoped host-key trust | [Host](../../Sources/Heeler/Hosts/Host.swift) (`HostRoute`), [HostDraft](../../Sources/Heeler/Hosts/HostDraft.swift) and [HostRouteFields](../../Sources/Heeler/Hosts/HostRouteFields.swift) → [SSHTransportSettings](../../Sources/Heeler/Transport/SSHTransportSettings.swift) (`SSHRoute`) → `HeelerSSHTransport.connect` with [RouteRace](../../Sources/Heeler/Transport/RouteRace.swift); trust in [HeelerSSHHostKeyVerifier](../../Sources/Heeler/Transport/HeelerSSHHostKeyVerifier.swift) | [ADR 0022](../adr/0022-host-routes.md); [HostRouteTests](../../Tests/HeelerTests/HostRouteTests.swift), Jump Host route races in [HeelerSSHJumpHostGateE2ETests](../../Tests/HeelerTests/HeelerSSHJumpHostGateE2ETests.swift) |
 | Overlay Networks (in-app Tailscale/ZeroTier/EasyTier first hop) | [OverlayNetworkStore](../../Sources/Heeler/Overlay/OverlayNetworkStore.swift) → [OverlayNetworkRuntime](../../Sources/Heeler/Overlay/OverlayNetworkRuntime.swift) → [OverlayRoute](../../Sources/Heeler/Transport/OverlayRoute.swift) in `HeelerSSHTransport`; nodes live in [Packages/HeelerOverlay](../../Packages/HeelerOverlay), native libraries in [heeler-overlay-natives](https://github.com/Ylarod/heeler-overlay-natives) (exact release) | [Setup guides](../guides/overlay-networks.md) and their [maintenance record](overlay-network-guides.md); [ADR 0021](../adr/0021-in-process-overlay-networks.md); [OverlayNetworkTests](../../Tests/HeelerTests/OverlayNetworkTests.swift) |
 | Requests, subscriptions, reconnect | [Transport](../../Sources/Heeler/Transport/Transport.swift) → [EventsSession](../../Sources/Heeler/Transport/EventsSession.swift) → [HeelerSSHTransport](../../Sources/Heeler/Transport/HeelerSSHTransport.swift); projection follows subscription acknowledgement with a snapshot | [ADR 0011](../adr/0011-libssh2-direct-streamlocal-transport.md), [versioned compatibility evidence](herdr-compatibility.md); [EventsSessionSubscriptionsTests](../../Tests/HeelerTests/EventsSessionSubscriptionsTests.swift), [EventsSessionBufferingTests](../../Tests/HeelerTests/EventsSessionBufferingTests.swift), real-SSH lanes |
@@ -116,6 +116,52 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
 
 ## Other feature routes
 
+- **Usage Limits and Token Usage:** `ConsoleView.usageTab()` hosts the Usage
+  tab: [AgentUsageTabView and the iPad sidebar list](../../Sources/Heeler/Usage/AgentUsageTab.swift)
+  around [AgentUsageDashboard](../../Sources/Heeler/Usage/AgentUsageDashboard.swift),
+  with [charts](../../Sources/Heeler/Usage/AgentUsageCharts.swift),
+  [sheets](../../Sources/Heeler/Usage/AgentUsageSheets.swift), and the iPad
+  [wide layout's table, limits strip and Limits view](../../Sources/Heeler/Usage/AgentUsageWide.swift).
+  [AgentUsageScope](../../Sources/Heeler/Usage/AgentUsageScope.swift) adds
+  Token Usage across Hosts and lists the Hosts left out.
+  [HostOnboardingView](../../Sources/Heeler/Hosts/HostOnboardingView.swift)
+  embeds the short [AgentUsageSection](../../Sources/Heeler/Usage/AgentUsageSection.swift),
+  which opens the tab scoped to that Host.
+  `ConsoleStore.agentUsageStore(for:)` retains an
+  [AgentUsageStore](../../Sources/Heeler/Usage/AgentUsageStore.swift) per Host;
+  it owns refresh polling and the device's per-Host Claude limits preference.
+  The Home and Lock Screen widgets read the App Group snapshot that
+  [AgentUsageWidgetPublisher](../../Sources/Heeler/Usage/AgentUsageWidgetPublisher.swift)
+  writes from those stores, modeled in
+  [UsageWidgetSnapshot](../../Sources/HeelerUsageCore/UsageWidgetSnapshot.swift)
+  (shared with the extension, as are the formats in `AgentUsageStyle`).
+  [UsageWidgetViews](../../Sources/HeelerWidgets/Usage/UsageWidgetViews.swift)
+  draws every size and is compiled into the app for tests;
+  [UsageWidgets](../../Sources/HeelerWidgets/Usage/UsageWidgets.swift) holds
+  the timelines and configuration. Stale Hosts are re-read for the widgets
+  by `ConsoleStore.refreshStaleWidgetUsage()` in the foreground and by
+  [AgentUsageBackgroundRefresh](../../Sources/Heeler/Usage/AgentUsageBackgroundRefresh.swift)
+  (the app refresh task `HeelerApp` registers) in the background. Focused
+  tests: `AgentUsageWidgetTests`, `AgentUsageWidgetRefreshTests`.
+  `Transport.readAgentUsage` uses [AgentUsageProbe](../../Sources/Heeler/Usage/AgentUsageProbe.swift)
+  and the bounded SSH exec to decode [AgentUsageReport](../../Sources/Heeler/Usage/AgentUsageReport.swift).
+  On the Host, [usage-runtime.js](../../plugin/src/usage-runtime.js) records
+  herdr's environment, [usage-query.js](../../plugin/src/usage-query.js)
+  reads snapshots, and [usage-worker.js](../../plugin/src/usage-worker.js)
+  coordinates [scanners, limit readers, buckets and pricing](../../plugin/src/usage).
+  Read the [design](../design/agent-usage.md) and
+  [ADR 0028](../adr/0028-plugin-collects-agent-usage-on-the-host.md).
+  Focused app coverage: `AgentUsageStoreTests` and `ClaudeUsagePreferenceTests`
+  in [AgentUsageTests](../../Tests/HeelerTests/AgentUsageTests.swift),
+  [probe](../../Tests/HeelerTests/AgentUsageProbeTests.swift),
+  [presentation](../../Tests/HeelerTests/AgentUsagePresentationTests.swift),
+  [scope](../../Tests/HeelerTests/AgentUsageScopeTests.swift),
+  [page and interactions](../../Tests/HeelerTests/AgentUsagePageTests.swift),
+  [limits and disclosure](../../Tests/HeelerTests/AgentUsageLimitsTests.swift),
+  and [real SSH](../../Tests/HeelerTests/HeelerSSHTransportBehaviorE2ETests+Usage.swift).
+  Process coverage is `plugin/test/usage-*.test.js`; the worker test produces
+  the shared [usage-v1 vector](../../plugin/test-vectors/usage-v1.json).
+  Price-table maintenance is in the [plugin README](../../plugin/README.md#maintaining-the-price-table).
 - **Remote directory browsing:** [RemoteDirectoryBrowser](../../Sources/Heeler/Console/RemoteDirectoryBrowser.swift)
   and `ConsoleStore.listRemoteDirectories` reach the app SSH adapter.
   [RemoteDirectoryBrowserTests](../../Tests/HeelerTests/RemoteDirectoryBrowserTests.swift)

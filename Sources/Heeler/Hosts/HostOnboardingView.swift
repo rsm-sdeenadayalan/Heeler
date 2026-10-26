@@ -6,6 +6,10 @@ import SwiftUI
 struct HostOnboardingView: View {
     /// The Host catalog, for the Edit sheet.
     let catalog: HostStore
+    let usage: AgentUsageStore?
+    /// Shows this Host on the Usage tab; nil where the Host detail stands
+    /// outside the Console.
+    let openUsage: (() -> Void)?
     let connectionStatus: EventsSessionStatus?
     let standingFailure: TransportError?
     /// The route the Console's connection reached (ADR 0022).
@@ -33,6 +37,8 @@ struct HostOnboardingView: View {
     init(
         host: Host,
         catalog: HostStore,
+        usage: AgentUsageStore? = nil,
+        openUsage: (() -> Void)? = nil,
         connectionStatus: EventsSessionStatus? = nil,
         standingFailure: TransportError? = nil,
         connectedRouteID: HostRoute.ID? = nil,
@@ -43,6 +49,8 @@ struct HostOnboardingView: View {
         dependencies: HostOnboardingDependencies = HostOnboardingDependencies()
     ) {
         self.catalog = catalog
+        self.usage = usage
+        self.openUsage = openUsage
         self.connectionStatus = connectionStatus
         self.standingFailure = standingFailure
         self.connectedRouteID = connectedRouteID
@@ -94,6 +102,12 @@ struct HostOnboardingView: View {
                 }
             }
 
+            if let usage {
+                AgentUsageSection(
+                    hostID: store.host.id, hostName: store.host.displayName, store: usage,
+                    openUsage: openUsage)
+            }
+
             availableSessionsSection
 
             overlaySignInSection
@@ -109,6 +123,9 @@ struct HostOnboardingView: View {
             }
         }
         .readableColumnPage()
+        .refreshable {
+            if let usage { await usage.pullToRefresh() }
+        }
         .navigationTitle(store.host.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -120,9 +137,11 @@ struct HostOnboardingView: View {
             HostFormView(store: catalog, editing: store.host)
         }
 
-        .pluginNoticeSheet(pluginPresentation.notice, isPresented: $isShowingPluginNotice) {
-            Task { await store.runChecks() }
-        }
+        .pluginNoticeSheet(
+            pluginPresentation.notice, isPresented: $isShowingPluginNotice,
+            actionState: store.pluginAction,
+            runAction: { action in Task { await store.runPluginAction(action) } },
+            runChecks: { Task { await store.runChecks() } })
         .alert(
             "Trust this Host?",
             isPresented: fingerprintAlertPresented,
@@ -436,6 +455,7 @@ struct HostOnboardingView: View {
                     Button("Run Checks Again") {
                         Task { await store.runChecks() }
                     }
+                    .disabled(store.pluginAction == .running)
                 }
             }
             .font(.subheadline)
@@ -458,8 +478,7 @@ struct HostOnboardingView: View {
     }
 
     private var pluginPresentation: HeelerPluginPresentation {
-        HeelerPluginPresentation(
-            store.pluginStatus, session: store.host.sessionName, endpoint: store.host.herdrEndpoint)
+        store.pluginPresentation
     }
 
     /// The installed version. When the user has something to do on the Host
@@ -475,7 +494,12 @@ struct HostOnboardingView: View {
                 LabeledContent {
                     HStack(spacing: 6) {
                         Text(presentation.value)
-                        PluginNoticeIcon(tone: notice.tone)
+                        if store.pluginAction == .running {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            PluginNoticeIcon(tone: notice.tone)
+                        }
                     }
                 } label: {
                     // Not the button tint: the row reads like its neighbors.
