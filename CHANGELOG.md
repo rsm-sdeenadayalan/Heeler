@@ -9,6 +9,14 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Paths to images in Chat messages open the image. A path to a picture on the
+  Host, written as code, as a link or in the text of your messages or the
+  Agent's, shows in the tint color after a photo symbol; tap it, or choose
+  Preview Image from the message's menu, to open it with zoom. Paths relative
+  to the Agent's folder and paths starting at `~` open too. (#618)
+- Touch and hold an Agent on a By Workspace card and tap New Agent to start
+  one in its Workspace and directory, as the Agent's own New Agent does.
+  (#616)
 - Browse Directories hides folders whose names start with a dot. Tap the eye
   button beside Select to list them again; Heeler remembers the choice.
   (#609)
@@ -77,6 +85,21 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- By Workspace keeps each repository's card while Heeler connects: saved
+  Chats from a main checkout and its worktrees open under the same card the
+  running Agents had, instead of as separate cards that regroup once the Host
+  answers. Each checkout keeps the branch it was last read on as its title
+  until Heeler reads it again. (#618)
+- Round the bottom corners of a collapsed By Workspace card with nothing to
+  summarize, such as a Workspace whose Agents are all idle, instead of ending
+  it in a square-cornered strip under its header. (#616)
+- Put Show Chat or Show Agent Terminal and More with Back in iPhone Duo's
+  side controls, using the system overflow menu instead of leaving their
+  capsule over the content. Horizontal layouts keep their existing controls.
+  (#612)
+- Put Back with the system controls along an iPhone Duo's side on Agent Chat,
+  Agent Terminal and Shell Terminal details, instead of leaving it floating at
+  the opposite top corner. (#610)
 - Give the website and bilingual docs clean search URLs, sitemaps, app metadata,
   browser icons, landscape sharing cards, and permanent canonical redirects.
   Keep error pages, raw guides, and search data out of search results, and add
