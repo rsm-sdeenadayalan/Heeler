@@ -7,8 +7,14 @@ Entries reference the pull request that made the change.
 
 ## [Unreleased]
 
+## [0.1.17] - 2026-11-04
+
 ### Added
 
+- Paste an image from the clipboard into a message: tap **+**, then **Paste
+  Image**, or paste into the Composer from the keyboard or the edit menu.
+  Heeler uploads it to the Host and adds its path, as Add Image does.
+  (#617)
 - Paths to images in Chat messages open the image. A path to a picture on the
   Host, written as code, as a link or in the text of your messages or the
   Agent's, shows in the tint color after a photo symbol; tap it, or choose
@@ -20,6 +26,11 @@ Entries reference the pull request that made the change.
 - Browse Directories hides folders whose names start with a dot. Tap the eye
   button beside Select to list them again; Heeler remembers the choice.
   (#609)
+- The Shell Terminal can show the shortcut row from Direct Input (Esc, Tab,
+  arrows, Backspace and Enter) above its input row, so you can reach those
+  keys while typing on the iOS keyboard. Turn it on with the new button beside
+  the keyboard button. It's off by default, and the row and its button
+  hide in Keys mode. (#611)
 - New Agent opens on the Agent you started last, when the Host has it
   installed. (#608)
 - Chat shows the images Agents read or make as thumbnails under their rows;
@@ -59,6 +70,17 @@ Entries reference the pull request that made the change.
 
 ### Changed
 
+- Raise and lower the Shell Terminal's input row with the keyboard, in step
+  with it, as the Composer does, instead of jumping ahead of it. (#611)
+- Keep the answers on Claude Code's and Codex's folder trust cards in view
+  below the folder, as a row of capsules with leaving on the left and
+  trusting on the right, instead of below the card's fold on a phone.
+  (#619)
+- Show Chat's Show Agent Terminal and Check Again side by side as glass
+  capsules while it waits for a conversation. (#619)
+- Spin Check Again while Chat looks for the conversation, for at least a
+  moment, then ease into what it found instead of switching at once.
+  (#619)
 - Give an Agent's title on a By Workspace card one size and color, whether
   the Agent shares its checkout or stands alone under the checkout's title,
   and set a repository's checkout titles apart from it in a quieter color.
@@ -85,6 +107,10 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Show Codex's Folder access prompt in Chat as a card with Trust and continue
+  and Quit. On a phone, where herdr reports Codex idle on that prompt, Chat
+  used to wait for a conversation instead, and on a wider screen the generic
+  card's `1` did nothing. (#619)
 - By Workspace keeps each repository's card while Heeler connects: saved
   Chats from a main checkout and its worktrees open under the same card the
   running Agents had, instead of as separate cards that regroup once the Host
