@@ -2,8 +2,45 @@ import Foundation
 import Observation
 import os
 
-/// One Host's on-demand Usage reading. Connections are borrowed from Console;
-/// opening Usage never starts an independent SSH connection.
+/// What a herdr-core Host's Usage is waiting for (ADR 0033). Thrown by a read,
+/// and held in `AgentUsageStore.State`.
+enum AgentUsageHostHelperNeed: Error, Equatable, Sendable {
+    case notInstalled
+    /// A Helper from before it served Usage.
+    case outdated
+    /// The Helper holds no record of this session's core yet.
+    case waitingForCore
+    /// The record and the service both name a Node.js that has gone.
+    case nodeGone
+    case notOnWindows
+
+    var message: String {
+        switch self {
+        case .notInstalled: "Usage needs the Host Helper. See this Host's details."
+        case .outdated: "Usage needs a newer Host Helper. Update it from this Host's details."
+        case .waitingForCore:
+            "The Host Helper has not reached this session's core yet. Start the core if it is not running."
+        case .nodeGone:
+            "The Node.js the Host Helper was set up with has gone from this Host. Repair it from this Host's details."
+        case .notOnWindows: "Usage comes with the Host Helper, which is not available on native Windows yet."
+        }
+    }
+
+    /// The short line a Host left out of the totals shows.
+    var reason: String {
+        switch self {
+        case .notInstalled: "Needs the Host Helper"
+        case .outdated: "Update the Host Helper"
+        case .waitingForCore: "Waiting for the core"
+        case .nodeGone: "Repair the Host Helper"
+        case .notOnWindows: "Comes with the Host Helper, not available yet"
+        }
+    }
+}
+
+/// One Host's on-demand Usage reading. A Herdr TUI Host's connection is borrowed
+/// from Console, so opening Usage starts no independent SSH connection there. A
+/// core Host's read dials one when Console has none (ADR 0033).
 @MainActor
 @Observable
 final class AgentUsageStore {
@@ -12,10 +49,16 @@ final class AgentUsageStore {
         case loading
         case requirement(String)
         case unsupportedPlatform
+        case hostHelper(AgentUsageHostHelperNeed)
         case runtimeMissing
         case updateRequired
         case available(AgentUsageReport)
         case failed(String)
+
+        /// The read failed on the way to the Host, not at the Host's answer.
+        nonisolated var couldNotReachHost: Bool {
+            self == .failed(AgentUsageStore.connectionFailureMessage)
+        }
     }
 
     /// One read's outcome and the plugin release that gave it, when the
@@ -23,35 +66,6 @@ final class AgentUsageStore {
     struct Reading: Sendable {
         let state: State
         let pluginVersion: PluginVersion?
-    }
-
-    /// Runs one operation over the Host's connection.
-    typealias HostOperation = @MainActor (
-        _ operation: @escaping @Sendable (any Transport) async throws -> Void
-    ) async throws -> Void
-
-    /// What one Account file change is about, so its row can show a spinner.
-    enum AccountChange: Hashable, Sendable {
-        /// Renaming or removing an Account, by its report id (`default` for
-        /// the Default Account).
-        case account(String)
-        /// Adding or ignoring a directory.
-        case directory(String)
-    }
-
-    /// An Account change that could not be saved, for an alert.
-    struct AccountChangeFailure: Identifiable, Equatable, Sendable {
-        let id = UUID()
-        let message: String
-    }
-
-    /// How adding a directory chosen in the remote browser ended.
-    enum ChosenDirectoryOutcome: Equatable, Sendable {
-        case added
-        /// Shown in place, beside the browser.
-        case refused(ClaudeAccountError)
-        /// Reported in `accountChangeFailure`.
-        case failed
     }
 
     /// What a visible surface keys its refresh task on: the request it
@@ -89,15 +103,6 @@ final class AgentUsageStore {
     private(set) var readAt: Date?
     /// The plugin release behind the shown state, when its read learned it.
     private(set) var pluginVersion: PluginVersion?
-    /// Account file changes in flight; each stays until a read started
-    /// after its write lands.
-    private(set) var pendingAccountChanges: Set<AccountChange> = []
-    /// The last Account change that could not be saved; its alert, or the
-    /// Accounts sheet closing, clears it.
-    var accountChangeFailure: AccountChangeFailure?
-    /// The Host's home folder, once the Accounts sheet asked for it: their
-    /// directories show it as `~`.
-    private(set) var hostHome: String?
     /// Called after the state or the Claude Code limits choice changes, so
     /// the widgets' snapshot can follow.
     @ObservationIgnored var didChange: (@MainActor () -> Void)?
@@ -122,55 +127,50 @@ final class AgentUsageStore {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let preferenceKey: String
     @ObservationIgnored private let read: @MainActor (String, Bool) async throws -> Reading
-    @ObservationIgnored private let onHost: HostOperation?
-    /// Serializes the Account file's read, edit and replace. Hosts that
-    /// share a plugin config directory share the file, so the Console
-    /// passes one gate for every Host, as for the registration file.
-    @ObservationIgnored private let accountFileGate: GitExecGate
     @ObservationIgnored private let sleep: @Sendable (Duration) async throws -> Void
     @ObservationIgnored private var request: UUID?
     @ObservationIgnored private var lastRead: ContinuousClock.Instant?
     @ObservationIgnored private var consecutiveFailures = 0
+    @ObservationIgnored private var consecutiveWaits = 0
     @ObservationIgnored private var pendingPause: Task<Void, any Error>?
     @ObservationIgnored private var readWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
     /// Reads started so far; each read is numbered by it.
     @ObservationIgnored private var readsStarted = 0
-    /// For each pending Account change whose write landed, the reads
-    /// started by then: any later read shows the change.
-    @ObservationIgnored private var accountChangeWrites: [AccountChange: Int] = [:]
+    /// For each Account file change still to be shown, the reads started
+    /// when it was written: any later read shows it.
+    @ObservationIgnored private var accountChangeWrites: [UUID: Int] = [:]
 
     convenience init(hostID: Host.ID, transports: any NotificationTransportProvider,
         defaults: UserDefaults = .standard,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
-        self.init(
-            hostID: hostID,
-            onHost: { operation in try await transports.withNotificationTransport(for: hostID, operation) },
-            defaults: defaults, sleep: sleep
-        ) { timeZone, claudeLimits in
+        self.init(hostID: hostID, reader: Reader { timeZone, claudeLimits in
             try await transports.withNotificationTransport(for: hostID) { transport in
                 try await Self.reading(over: transport, timeZone: timeZone, claudeLimits: claudeLimits)
             }
-        }
+        }, defaults: defaults, sleep: sleep)
     }
 
-    /// A store that only reads: Account changes fail, and whether the
-    /// plugin has Accounts follows the shown report.
+    /// A store whose reads learn no plugin version: whether the plugin has
+    /// Accounts follows the shown report.
     convenience init(hostID: Host.ID, defaults: UserDefaults = .standard,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
         read: @escaping @MainActor (String, Bool) async throws -> State) {
-        self.init(hostID: hostID, onHost: nil, defaults: defaults, sleep: sleep) { timeZone, claudeLimits in
+        self.init(hostID: hostID, reader: Reader { timeZone, claudeLimits in
             Reading(state: try await read(timeZone, claudeLimits), pluginVersion: nil)
-        }
+        }, defaults: defaults, sleep: sleep)
+    }
+
+    /// How a store reads its Host: the time zone and whether to ask for
+    /// Claude Code limits in, a reading out. Not a bare closure, so a
+    /// trailing closure always means the read-only `read:`.
+    struct Reader {
+        let read: @MainActor (String, Bool) async throws -> Reading
     }
 
     /// Console uses weak captures here so its retained stores cannot keep it alive.
-    init(hostID: Host.ID, onHost: HostOperation?, defaults: UserDefaults = .standard,
-        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
-        accountFileGate: GitExecGate = GitExecGate(),
-        reading: @escaping @MainActor (String, Bool) async throws -> Reading) {
-        read = reading
-        self.onHost = onHost
-        self.accountFileGate = accountFileGate
+    init(hostID: Host.ID, reader: Reader, defaults: UserDefaults = .standard,
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+        read = reader.read
         self.sleep = sleep
         self.defaults = defaults
         preferenceKey = Self.claudeLimitsPreferenceKey(for: hostID)
@@ -239,15 +239,14 @@ final class AgentUsageStore {
     func invalidate() {
         // No read will show a pending Account change now.
         accountChangeWrites = [:]
-        pendingAccountChanges = []
         endRefresh()
         snapshotState = .idle
         snapshotIncludesClaudeLimits = false
         refreshFailure = nil
         readAt = nil
         pluginVersion = nil
-        hostHome = nil
         consecutiveFailures = 0
+        consecutiveWaits = 0
         didChange?()
     }
 
@@ -287,11 +286,34 @@ final class AgentUsageStore {
         return Reading(state: state, pluginVersion: version)
     }
 
+    /// A herdr-core Host's read: its Helper's report for the Host's session, from
+    /// one bounded exec. A native Windows Host has no Helper and runs nothing.
+    nonisolated static func reading(
+        overHelper host: any HostHelperHost, session: String, timeZone: String, claudeLimits: Bool
+    ) async throws -> Reading {
+        guard try await host.hostPlatform() == .posix else {
+            return Reading(state: .hostHelper(.notOnWindows), pluginVersion: nil)
+        }
+        let report: AgentUsageReport
+        do {
+            report = try await HostHelperFiles(host: host, session: session)
+                .readUsage(timeZone: timeZone, claudeLimits: claudeLimits)
+        } catch {
+            // A core Host has no plugin to blame or update.
+            guard Self.state(for: error) == .failed(pluginFailureMessage) else { throw error }
+            return Reading(state: .failed(helperFailureMessage), pluginVersion: nil)
+        }
+        return Reading(
+            state: report.runtime == "missing" ? .hostHelper(.waitingForCore) : .available(report),
+            pluginVersion: nil)
+    }
+
     /// Link failures ask the user to check the connection. A Host that
     /// answered, but not with a readable report, would answer the same way
     /// over any connection, so its copy does not blame the link.
     nonisolated static func state(for error: any Error) -> State {
         switch error {
+        case let need as AgentUsageHostHelperNeed: .hostHelper(need)
         case AgentUsageError.unsupportedVersion: .updateRequired
         case TransportError.hostFeatureUnavailable: .unsupportedPlatform
         case TransportError.hostFileTimedOut: .failed(timeoutMessage)
@@ -306,12 +328,19 @@ final class AgentUsageStore {
         "Could not read Usage. Check the Host connection and try again."
     nonisolated static let pluginFailureMessage =
         "The Heeler plugin on this Host could not report Usage. Try again, or update the plugin."
+    nonisolated static let helperFailureMessage =
+        "The Host Helper on this Host could not report Usage. Try again, or see this Host's details."
     nonisolated static let timeoutMessage =
         "The Host took too long to report Usage. Try again in a moment."
 
     /// Polling continues while the shown report is refreshing; a failed
-    /// refresh backs off. nil stops polling.
+    /// refresh backs off. A Helper that has yet to reach a core is read again
+    /// too, backing off, since no core may be running. nil stops polling.
     private var pollingInterval: Duration? {
+        if snapshotState == .hostHelper(.waitingForCore) {
+            let doublings = min(max(consecutiveWaits - 1, 0), 4)
+            return min(Self.pollInterval * (1 << doublings), Self.maximumRetryInterval)
+        }
         guard case .available(let report) = snapshotState, report.refreshing == true else { return nil }
         guard refreshFailure != nil else { return Self.pollInterval }
         let doublings = min(max(consecutiveFailures - 1, 0), 4)
@@ -370,12 +399,12 @@ final class AgentUsageStore {
             refreshFailure = nil
             readAt = .now
             consecutiveFailures = 0
+            consecutiveWaits = next == .hostHelper(.waitingForCore) ? consecutiveWaits + 1 : 0
         }
         // This read shows the Account changes written before it started; a
         // failed one ends their wait all the same.
         for (change, readsBefore) in accountChangeWrites where readsBefore < number {
             accountChangeWrites[change] = nil
-            pendingAccountChanges.remove(change)
         }
         resumeReadWaiters()
         didChange?()
@@ -438,210 +467,15 @@ extension AgentUsageStore {
         return HeelerPluginFeature.claudeAccounts.requirementNote(installed: pluginVersion)
     }
 
-    /// Whether `name` already names another of the shown Accounts, as the
-    /// rename alert checks before Save. An empty name for the Default
-    /// Account stands for "Default".
-    func isAccountNameTaken(_ name: String, renaming account: AgentUsageReport.Account) -> Bool {
-        guard case .available(let report) = snapshotState, let accounts = report.claudeProgram?.accounts
-        else { return false }
-        var name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if account.isDefault, name.isEmpty { name = AgentUsageReport.Account.defaultDisplayName }
-        return accounts.contains { $0.id != account.id && $0.displayName == name }
-    }
-
-    /// Whether a change to this row is being saved or read back.
-    func isChangingAccount(_ change: AccountChange) -> Bool {
-        pendingAccountChanges.contains(change)
-    }
-
-    /// Adds a suggested directory under its suggested name.
-    @discardableResult
-    func addAccount(_ suggestion: AgentUsageReport.AccountSuggestion) async -> Bool {
-        await reportingFailure { try await self.add(suggestion) }
-    }
-
-    /// Adds a directory picked in the remote browser. It must hold Claude
-    /// Code's `.claude.json` or `projects/`; one a suggestion offers is
-    /// added as that suggestion.
-    func addAccount(directory: String) async -> ChosenDirectoryOutcome {
-        do {
-            if case .available(let report) = snapshotState,
-                let suggestion = report.claudeProgram?.accountSuggestions?.first(where: { $0.directory == directory })
-            {
-                try await add(suggestion)
-            } else {
-                try await changeAccounts(.directory(directory), checkingDirectory: directory) { file, defaultDirectory in
-                    try file.add(directory: directory, defaultDirectory: defaultDirectory)
-                }
-            }
-            return .added
-        } catch let refusal as ClaudeAccountError {
-            return .refused(refusal)
-        } catch {
-            accountChangeFailure = AccountChangeFailure(message: Self.accountChangeMessage(for: error))
-            return .failed
-        }
-    }
-
-    /// Renames an Account; an empty name gives the Default Account back
-    /// its "Default".
-    @discardableResult
-    func renameAccount(_ account: AgentUsageReport.Account, to name: String) async -> Bool {
-        await reportingFailure {
-            try await self.changeAccounts(.account(account.id)) { file, _ in
-                try file.rename(
-                    accountID: account.isDefault ? UsageAccountFile.defaultAccountID : account.id, to: name)
-            }
-        }
-    }
-
-    /// Removes an added Account. The Default Account stays.
-    @discardableResult
-    func removeAccount(_ account: AgentUsageReport.Account) async -> Bool {
-        guard !account.isDefault else { return false }
-        return await reportingFailure {
-            try await self.changeAccounts(.account(account.id)) { file, _ in
-                file.remove(accountID: account.id)
-            }
-        }
-    }
-
-    /// Dismisses a suggestion; the plugin stops offering its directory.
-    @discardableResult
-    func ignoreSuggestion(_ suggestion: AgentUsageReport.AccountSuggestion) async -> Bool {
-        await reportingFailure {
-            try await self.changeAccounts(.directory(suggestion.directory)) { file, defaultDirectory in
-                try file.ignore(directory: suggestion.directory, defaultDirectory: defaultDirectory)
-            }
-        }
-    }
-
-    /// Learns the Host's home folder once; a failure leaves full paths.
-    func loadHostHome() async {
-        guard hostHome == nil, onHost != nil else { return }
-        hostHome = try? await onHostValue { try await $0.hostHomeDirectory() }
-    }
-
-    /// A remote directory browser over this Host's connection, for Choose
-    /// Another Directory…: it starts in the home folder and lists symbolic
-    /// links to directories too, since Claude Code reads a directory by the
-    /// path it is given. nil for a store that only reads.
-    func accountDirectoryBrowser() -> RemoteDirectoryBrowser? {
-        guard onHost != nil else { return nil }
-        return RemoteDirectoryBrowser(
-            resolveHome: { [weak self] in
-                guard let self else { throw CancellationError() }
-                let home = try await self.onHostValue { try await $0.hostHomeDirectory() }
-                self.hostHome = home
-                return home
-            },
-            list: { [weak self] path in
-                guard let self else { throw CancellationError() }
-                return try await self.onHostValue { transport in
-                    try await RemoteDirectoryListing.followingLinks(at: path, over: transport)
-                }
-            })
-    }
-
-    nonisolated static func accountChangeMessage(for error: any Error) -> String {
-        switch error {
-        case let error as ClaudeAccountError: error.message
-        case NotificationRegistrationError.pluginNotInstalled:
-            "Enable the Heeler plugin on this Host to change its Accounts."
-        case NotificationRegistrationError.readFailed, NotificationRegistrationError.pluginProbeFailed:
-            "Heeler could not read this Host’s Accounts. Try again."
-        case NotificationRegistrationError.writeFailed:
-            "Heeler could not save this Host’s Accounts. Try again."
-        case TransportError.hostFeatureUnavailable:
-            "Claude Code Accounts are not available on this Host."
-        default:
-            "Could not change the Accounts. Check the Host connection and try again."
-        }
-    }
-
-    /// Whether `directory` holds Claude Code's own `.claude.json` or a
-    /// `projects/` directory, as the plugin's home listing checks.
-    nonisolated static func holdsClaudeCode(_ directory: String, over transport: any Transport) async throws -> Bool {
-        let base = directory.count > 1 && directory.hasSuffix("/") ? String(directory.dropLast()) : directory
-        if try await transport.fileStatus(atPath: base + "/.claude.json")?.kind == .regular { return true }
-        return try await transport.fileStatus(atPath: base + "/projects")?.kind == .directory
-    }
-
-    /// Runs `operation` over the Host's connection and returns its value.
-    private func onHostValue<Value: Sendable>(
-        _ operation: @escaping @Sendable (any Transport) async throws -> Value
-    ) async throws -> Value {
-        guard let onHost else { throw TransportError.hostFeatureUnavailable(feature: "Claude Code Accounts") }
-        let result = OSAllocatedUnfairLock<Value?>(initialState: nil)
-        try await onHost { transport in
-            let value = try await operation(transport)
-            result.withLock { $0 = value }
-        }
-        guard let value = result.withLock({ $0 }) else { throw CancellationError() }
-        return value
-    }
-
-    private func add(_ suggestion: AgentUsageReport.AccountSuggestion) async throws {
-        try await changeAccounts(.directory(suggestion.directory)) { file, defaultDirectory in
-            try file.add(directory: suggestion.directory, name: suggestion.name, defaultDirectory: defaultDirectory)
-        }
-    }
-
-    private func reportingFailure(_ change: () async throws -> Void) async -> Bool {
-        do {
-            try await change()
-            return true
-        } catch {
-            accountChangeFailure = AccountChangeFailure(message: Self.accountChangeMessage(for: error))
-            return false
-        }
-    }
-
-    /// Reads the Account file, applies `edit` and replaces the file when it
-    /// changed, under the Account file gate, then reads Usage again. The
-    /// row's change stays pending until a read started after the write
-    /// lands: that read, or a newer one that replaced it; another change to
-    /// the same row is refused until then. `edit` gets the Default Account's
-    /// directory, which cannot be added again.
-    private func changeAccounts(
-        _ change: AccountChange, checkingDirectory: String? = nil,
-        _ edit: @escaping @Sendable (inout UsageAccountFile, String?) throws -> Void
-    ) async throws {
-        guard supportsClaudeAccounts else {
-            throw ClaudeAccountError.pluginRequirement(
-                claudeAccountsRequirement
-                    ?? "Claude Code Accounts need plugin \(HeelerPluginFeature.claudeAccounts.minimumVersion) "
-                    + "or newer on this Host.")
-        }
-        guard let onHost else { throw TransportError.hostFeatureUnavailable(feature: "Claude Code Accounts") }
-        guard pendingAccountChanges.insert(change).inserted else { throw ClaudeAccountError.busy }
-        var defaultDirectory: String?
-        if case .available(let report) = snapshotState {
-            defaultDirectory = report.claudeProgram?.accounts?.first(where: \.isDefault)?.directory
-        }
-        let gate = accountFileGate
-        do {
-            try await onHost { [defaultDirectory] transport in
-                try await gate.run {
-                    if let checkingDirectory, !(try await Self.holdsClaudeCode(checkingDirectory, over: transport)) {
-                        throw ClaudeAccountError.notClaudeDirectory
-                    }
-                    var file = try UsageAccountFile.decode(try await transport.readUsageAccountFile())
-                    let original = file
-                    try edit(&file, defaultDirectory)
-                    guard file != original else { return }
-                    try await transport.replaceUsageAccountFile(try file.encoded())
-                }
-            }
-        } catch {
-            pendingAccountChanges.remove(change)
-            throw error
-        }
+    /// The Account file changed on the Host: reads Usage again and returns
+    /// once a read started after the change lands, so a row can keep its
+    /// spinner until Usage shows it. A newer read may replace the one this
+    /// starts; dropping it (turning Claude Code limits on or off) reads
+    /// again. Turning Usage off ends the wait.
+    func showAccountFileChange() async {
+        let change = UUID()
         accountChangeWrites[change] = readsStarted
         await readAfterAccountChange()
-        // A newer read may have replaced this one: wait for it, or read
-        // again when none is underway (turning Claude Code limits on or
-        // off drops a read).
         while accountChangeWrites[change] != nil, !Task.isCancelled {
             if request == nil {
                 await readAfterAccountChange()
@@ -649,8 +483,7 @@ extension AgentUsageStore {
                 await waitForNextRead()
             }
         }
-        // Cancelled before a read showed it.
-        if accountChangeWrites.removeValue(forKey: change) != nil { pendingAccountChanges.remove(change) }
+        accountChangeWrites[change] = nil
     }
 
     /// One read right after the Account file changed. A read already in

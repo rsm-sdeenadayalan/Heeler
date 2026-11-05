@@ -200,6 +200,7 @@ struct HeelerPluginPresentationTests {
         let cases: [(HeelerPluginStatus, String)] = [
             (.checking, "Checking…"),
             (.unsupportedPlatform, "Not supported on Windows"),
+            (.unsupportedServerKind, "Not supported on herdr-core"),
             (.unavailable, "Unknown"),
             (.installed(HeelerPluginInstallation(version: "0.6.0")), "0.6.0"),
             // The plugin branch moved ahead of this build.
@@ -420,6 +421,15 @@ struct HeelerPluginPresentationTests {
         #expect(linked.commands.isEmpty)
     }
 
+    @Test func corePluginFailureDoesNotOfferATuiInstallOrClaimWindows() {
+        let status = HeelerPluginStatus(.failure(HeelerPluginUnavailableError.herdrCore))
+        #expect(status == .unsupportedServerKind)
+        let presentation = HeelerPluginPresentation(status, session: "")
+        #expect(presentation.value == "Not supported on herdr-core")
+        #expect(presentation.notice == nil)
+        #expect(status.confirmedVersion == nil)
+    }
+
     @Test func notInstalledOffersTheInstallCommandCalmly() throws {
         let notice = try #require(HeelerPluginPresentation(.notInstalled, session: "").notice)
         #expect(notice.tone == .info)
@@ -442,6 +452,15 @@ struct HeelerPluginPresentationTests {
         #expect(requirements.allSatisfy { $0.note.contains(version) })
     }
 
+    /// Plugin 0.9.0 counts Codex Accounts in Usage (#621).
+    @Test func codexAccountsNeedPlugin090() {
+        #expect(HeelerPluginFeature.codexAccounts.minimumVersion == PluginVersion(0, 9, 0))
+        #expect(!HeelerPluginFeature.codexAccounts.isSupported(by: PluginVersion(0, 8, 0)))
+        #expect(
+            HeelerPluginFeature.codexAccounts.requirementNote(installed: PluginVersion(0, 8, 0))
+                == "Usage counts Codex Accounts from plugin 0.9.0; this Host has 0.8.0.")
+    }
+
     /// Plugin 0.8.0 reports Accounts and reads the Account file the app
     /// writes; 0.7.x does neither, so the update notice names it.
     @Test func claudeCodeAccountsNeedPlugin080() throws {
@@ -458,7 +477,7 @@ struct HeelerPluginPresentationTests {
         #expect(notice.message.contains("0.7.1 → 0.8.0"))
         #expect(notice.notes == ["Claude Code Accounts need plugin 0.8.0 or newer; this Host has 0.7.1."])
         #expect(
-            HeelerPluginStatus.installed(HeelerPluginInstallation(version: "0.8.0"))
+            HeelerPluginStatus.installed(HeelerPluginInstallation(version: "0.9.0"))
                 .requirements(for: HeelerPluginFeature.allCases).isEmpty)
     }
 
@@ -469,7 +488,7 @@ struct HeelerPluginPresentationTests {
             HeelerPluginStatus.installed(HeelerPluginInstallation(version: "0.4.0"))
                 .requirements(for: [.sidebarFields]).isEmpty)
         let unconfirmed: [HeelerPluginStatus] = [
-            .checking, .unavailable, .notInstalled, .unsupportedPlatform,
+            .checking, .unavailable, .notInstalled, .unsupportedPlatform, .unsupportedServerKind,
             .installed(HeelerPluginInstallation(version: "0.3.0", isEnabled: false)),
             .installed(HeelerPluginInstallation(version: "0.3.0", hasManifestWarning: true)),
             .installed(HeelerPluginInstallation(version: "dev")),

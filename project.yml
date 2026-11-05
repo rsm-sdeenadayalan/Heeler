@@ -61,6 +61,11 @@ targets:
       - path: Sources/Heeler/Resources/Notices
         type: folder
         buildPhase: resources
+      # The Host Helper the app installs on a herdr-core Host (ADR 0033). A
+      # folder reference keeps its tree whole; its manifest names every file.
+      - path: plugin/helper
+        type: folder
+        buildPhase: resources
     info:
       path: Sources/Heeler/Info.plist
       properties:
@@ -111,8 +116,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler
         # Home-screen name; the App Store listing is "Heeler for herdr".
         INFOPLIST_KEY_CFBundleDisplayName: Heeler
-        MARKETING_VERSION: "0.1.17"
-        CURRENT_PROJECT_VERSION: "40"
+        MARKETING_VERSION: "0.1.18"
+        CURRENT_PROJECT_VERSION: "41"
         # Scan to Pair (#62) reads the Pairing Code QR from the computer screen.
         INFOPLIST_KEY_NSCameraUsageDescription: "Heeler uses the camera to scan the Pairing Code shown on your computer, so you can add that machine without typing anything."
         # Voice Input (ADR 0036) records only after a tap on the Composer's
@@ -196,8 +201,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.NotificationService
-        MARKETING_VERSION: "0.1.17"
-        CURRENT_PROJECT_VERSION: "40"
+        MARKETING_VERSION: "0.1.18"
+        CURRENT_PROJECT_VERSION: "41"
         # Match the containing app's iPhone and iPad device family.
         TARGETED_DEVICE_FAMILY: "1,2"
 
@@ -246,8 +251,8 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.bybee.heeler.Widgets
-        MARKETING_VERSION: "0.1.17"
-        CURRENT_PROJECT_VERSION: "40"
+        MARKETING_VERSION: "0.1.18"
+        CURRENT_PROJECT_VERSION: "41"
         # Match the containing app's iPhone and iPad device family.
         TARGETED_DEVICE_FAMILY: "1,2"
 
@@ -283,11 +288,31 @@ targets:
       # Shared notification session vectors (#412), consumed by Node and Swift.
       - path: plugin/test-vectors/notification-session-v1.json
         buildPhase: resources
+      # Shared herdr-core frame vectors, read by Swift now and the Helper later.
+      - path: plugin/test-vectors/herdr-core-frames-v1.json
+        buildPhase: resources
+      # Scrubbed native Windows capture, replayed by the Swift link tests.
+      - path: plugin/test-vectors/herdr-core-frames-windows-v1.json
+        buildPhase: resources
+      - path: plugin/test-vectors/herdr-core-session-names-v1.json
+        buildPhase: resources
+      # Shared Agent rule vectors, read by Swift and the Helper.
+      - path: plugin/test-vectors/herdr-core-agent-rule-v1.json
+        buildPhase: resources
+      # Shared turn-end vectors, read by Swift and the Helper.
+      - path: plugin/test-vectors/herdr-core-turn-end-v1.json
+        buildPhase: resources
+      # Shared seen-mark vectors: Swift writes the format and the Helper reads it.
+      - path: plugin/test-vectors/herdr-core-seen-mark-v1.json
+        buildPhase: resources
       # Shared usage response produced by Node and decoded by Swift.
       - path: plugin/test-vectors/usage-v1.json
         buildPhase: resources
       # Shared plugin version vector: the release the app recommends.
       - path: plugin/test-vectors/plugin-version-v1.json
+        buildPhase: resources
+      # Shared Host Helper version vector: the Helper the app bundles.
+      - path: plugin/test-vectors/host-helper-version-v1.json
         buildPhase: resources
     settings:
       base:

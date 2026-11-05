@@ -42,7 +42,7 @@ enum HeelerPluginCompatibility {
     /// shared `plugin/test-vectors/plugin-version-v1.json` pins both sides,
     /// so a plugin release must update this constant too. A Host with a newer
     /// plugin (the plugin branch moved ahead of this build) counts as current.
-    static let bundled = PluginVersion(0, 8, 0)
+    static let bundled = PluginVersion(0, 9, 0)
 }
 
 /// An app feature that only works with a recent enough Heeler plugin.
@@ -64,6 +64,8 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
     /// Usage per Claude Code Account, and the Account file the app edits
     /// (ADR 0030).
     case claudeAccounts
+    /// Usage per Codex Account, from the Account file's `programs` (#621).
+    case codexAccounts
 
     var minimumVersion: PluginVersion {
         switch self {
@@ -72,6 +74,7 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
         case .sessionScopedNotifications: PluginVersion(0, 6, 0)
         case .usage: PluginVersion(0, 7, 0)
         case .claudeAccounts: PluginVersion(0, 8, 0)
+        case .codexAccounts: PluginVersion(0, 9, 0)
         }
     }
 
@@ -86,6 +89,8 @@ enum HeelerPluginFeature: CaseIterable, Hashable, Sendable {
             "Usage needs plugin \(minimumVersion) or newer; this Host has \(installed)."
         case .claudeAccounts:
             "Claude Code Accounts need plugin \(minimumVersion) or newer; this Host has \(installed)."
+        case .codexAccounts:
+            "Usage counts Codex Accounts from plugin \(minimumVersion); this Host has \(installed)."
         case .sidebarFields:
             "Sync from plugin and herdr's sidebar fields need plugin \(minimumVersion) "
                 + "or newer; this Host has \(installed)."
@@ -120,11 +125,17 @@ struct HeelerPluginRequirement: Hashable, Sendable {
     let note: String
 }
 
+/// The legacy TUI plugin cannot be installed into the core daemon.
+enum HeelerPluginUnavailableError: Error, Sendable {
+    case herdrCore
+}
+
 /// What one Host's plugin read established.
 enum HeelerPluginStatus: Equatable, Sendable {
     case checking
     /// The plugin does not run on native Windows Hosts.
     case unsupportedPlatform
+    case unsupportedServerKind
     /// The Host could not be asked or did not answer usefully; nothing is
     /// known about the plugin, which is not the same as it being absent.
     case unavailable
@@ -136,6 +147,7 @@ enum HeelerPluginStatus: Equatable, Sendable {
         switch result {
         case .success(let installation?): self = .installed(installation)
         case .success(nil): self = .notInstalled
+        case .failure(HeelerPluginUnavailableError.herdrCore): self = .unsupportedServerKind
         case .failure(TransportError.hostFeatureUnavailable): self = .unsupportedPlatform
         case .failure: self = .unavailable
         }
@@ -345,6 +357,9 @@ struct HeelerPluginPresentation: Equatable {
             notice = nil
         case .unsupportedPlatform:
             value = "Not supported on Windows"
+            notice = nil
+        case .unsupportedServerKind:
+            value = "Not supported on herdr-core"
             notice = nil
         case .unavailable:
             value = "Unknown"

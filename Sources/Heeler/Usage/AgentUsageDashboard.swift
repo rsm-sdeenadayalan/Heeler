@@ -7,6 +7,8 @@ struct AgentUsageHostEntry: Identifiable {
     let name: String
     let store: AgentUsageStore
     let isConnected: Bool
+    /// A herdr-core Host, whose Host Helper reads Usage in place of the plugin.
+    var readsOverHostHelper = false
 
     var reading: AgentUsageScope.HostReading {
         .init(id: id, name: name, state: store.state, refreshFailure: store.refreshFailure,
@@ -50,7 +52,7 @@ struct AgentUsageDashboard: View {
     @State private var selectedDay: String?
     @State private var daySheet: AgentUsageDaySelection?
     @State private var isShowingLimits = false
-    /// The Host whose Claude Code Accounts sheet is open.
+    /// The Host whose Accounts sheet the suggestions notice opened.
     @State private var accountsHostID: Host.ID?
     @State private var breakdown = AgentUsageBreakdown.Kind.models
     @State private var width: CGFloat = 0
@@ -68,7 +70,7 @@ struct AgentUsageDashboard: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 if isWide && showsLimits {
-                    AgentUsageLimitsPage(entries: scopedEntries, showAccounts: { accountsHostID = $0 }) {
+                    AgentUsageLimitsPage(entries: scopedEntries) {
                         showsLimits = false
                     }
                 } else {
@@ -113,7 +115,7 @@ struct AgentUsageDashboard: View {
         .sheet(isPresented: $isShowingLimits) {
             AgentUsageLimitsSheet(entries: scopedEntries)
         }
-        .modifier(ClaudeAccountsSheetPresenter(hostID: $accountsHostID, entries: entries))
+        .modifier(HostAccountsSheetPresenter(hostID: $accountsHostID, entries: entries))
         .onChange(of: scopeHostID) { selectedDay = nil }
         // Waits for the first layout: until then the page cannot tell wide
         // from compact.
@@ -707,14 +709,14 @@ struct AgentUsageDashboard: View {
         .padding(.top, 18)
     }
 
-    /// One Host's suggested Claude Code directories, under any failure.
+    /// One Host's suggested Account folders, under any failure.
     @ViewBuilder
     private var accountsNotice: some View {
         if scopedEntries.count == 1, let entry = scopedEntries.first, entry.isConnected,
-            let title = ClaudeAccountsListing.noticeTitle(
+            let title = AccountsListing.noticeTitle(
                 state: entry.store.state, supportsAccounts: entry.store.supportsClaudeAccounts)
         {
-            ClaudeAccountsNotice(title: title) { accountsHostID = entry.id }
+            AccountsNotice(title: title) { accountsHostID = entry.id }
                 .padding(.top, 14)
         }
     }

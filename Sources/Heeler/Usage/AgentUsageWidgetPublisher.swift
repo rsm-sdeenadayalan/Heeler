@@ -8,6 +8,9 @@ struct AgentUsageWidgetReading: Equatable {
     let state: AgentUsageStore.State
     let readAt: Date?
     let isConnected: Bool
+    /// A core Host's read dials its own connection, so a launch that has not read
+    /// it yet has nothing new to say, and what it last answered still stands.
+    var keepsLastAnswerUntilRead = false
 }
 
 /// Keeps the widgets' snapshot in step with the app's Usage readings and
@@ -115,12 +118,19 @@ extension UsageWidgetSnapshot.Host {
             } else {
                 self.init(id: reading.id, name: reading.name, report: report, readAt: readAt)
             }
-        case .requirement, .unsupportedPlatform, .runtimeMissing, .updateRequired:
+        case .requirement, .unsupportedPlatform, .hostHelper, .runtimeMissing, .updateRequired:
             self.init(id: reading.id, name: reading.name, excludedReason: AgentUsageScope.reason(for: reading.state))
         case .idle, .loading, .failed:
             if var kept {
                 kept.name = reading.name
                 self = kept
+                return
+            }
+            if reading.keepsLastAnswerUntilRead, reading.state == .idle || reading.state == .loading,
+                var answered = previous?.host(reading.id)
+            {
+                answered.name = reading.name
+                self = answered
                 return
             }
             let reason = if !reading.isConnected {
@@ -169,7 +179,7 @@ extension UsageWidgetSnapshot.Limits {
         switch card {
         case .limits(let accountID, let program, let account, let limits):
             self.init(program: program, name: name, account: account, accountID: accountID, limits: limits)
-        case .unread(let accountID, let account, let reason):
+        case .unread(let accountID, _, let account, let reason):
             self.init(
                 program: card.program, name: name, account: account, accountID: accountID, message: reason,
                 isLastReading: false, source: nil, observedAt: nil, windows: [])

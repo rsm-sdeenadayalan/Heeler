@@ -27,6 +27,33 @@ struct CodexTranscriptLocatorTests {
             .locate(threadID: thread)
     }
 
+    /// On herdr-core the root is the Agent's own `CODEX_HOME` (ADR 0034).
+    @Test func aGivenRootIsWhereItLooksAndNotTheHome() async throws {
+        let files = VirtualHostFiles()
+        let root = "/srv/work account"
+        let path = "\(root)/sessions/2026/10/06/\(Self.rolloutName("2026-10-06T12-45-25"))"
+        await files.write(Self.meta(id: Self.thread), at: path)
+        await files.write(
+            Self.meta(id: Self.thread), at: "\(Self.sessions)/2026/10/06/\(Self.rolloutName("2026-10-06T12-45-20"))")
+
+        let location = try await CodexTranscriptLocator(files: files.hostFiles(), now: { Self.sameDay })
+            .locate(threadID: Self.thread, configRoot: root).get()
+
+        #expect(location.segments.map(\.path) == [path])
+        #expect(await files.listings.allSatisfy { $0.directory.hasPrefix(root) })
+    }
+
+    @Test func aGivenRootNeverFallsBackToTheHome() async throws {
+        let files = VirtualHostFiles()
+        await files.write(
+            Self.meta(id: Self.thread), at: "\(Self.sessions)/2026/10/06/\(Self.rolloutName("2026-10-06T12-45-25"))")
+
+        let found = try await CodexTranscriptLocator(files: files.hostFiles(), now: { Self.sameDay })
+            .locate(threadID: Self.thread, configRoot: "/srv/empty")
+
+        #expect(found == .failure(.notFound))
+    }
+
     @Test func findsTheRolloutUnderItsCreationDate() async throws {
         let files = VirtualHostFiles()
         let path = "\(Self.sessions)/2026/10/06/\(Self.rolloutName("2026-10-06T12-45-25"))"
@@ -142,5 +169,58 @@ struct CodexTranscriptLocatorTests {
         await files.write(Self.meta(id: Self.revert), at: "\(directory)/rollout-2026-10-06T12-00-00-\(Self.revert).jsonl")
 
         #expect(try await Self.locate(files) == .failure(.notFound))
+    }
+
+    /// An Agent started with `CODEX_HOME` set to an added Account's
+    /// directory files its rollouts there (#621).
+    @Test func findsTheRolloutUnderAnAddedAccountsHome() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.codex-work"], for: .codex)
+        let path = "/home/dev/.codex-work/sessions/2026/10/06/\(Self.rolloutName("2026-10-06T12-45-25"))"
+        await files.write(try ChatFixture.data("codex/probe1-rollout.jsonl"), at: path)
+
+        #expect(try await Self.locate(files).get().live?.path == path)
+    }
+
+    @Test func anAccountsArchivedRolloutIsFound() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.codex-work"], for: .codex)
+        let path = "/home/dev/.codex-work/archived_sessions/\(Self.rolloutName("2026-10-06T12-45-25"))"
+        await files.write(Self.meta(id: Self.thread), at: path)
+
+        #expect(try await Self.locate(files).get().live?.path == path)
+    }
+
+    /// An Account the Host will not let Heeler read is skipped; a later
+    /// Account still finds the thread.
+    @Test func anUnreadableEarlierAccountDoesNotHideALaterOne() async throws {
+        let files = VirtualHostFiles(home: "/u")
+        await files.setAccountDirectories(["/u/account-a", "/u/account-b"], for: .codex)
+        let date = "2026/10/06"
+        await files.failNext(
+            .list, path: "/u/account-a/sessions/\(date)", with: TransportError.hostFileUnreadable(status: 3))
+        let path = "/u/account-b/sessions/\(date)/\(Self.rolloutName("2026-10-06T12-45-25"))"
+        await files.write(try ChatFixture.data("codex/probe1-rollout.jsonl"), at: path)
+
+        #expect(try await Self.locate(files).get().live?.path == path)
+
+        // Listing may succeed even though the matching file itself is unreadable.
+        let earlier = "/u/account-a/sessions/\(date)/\(Self.rolloutName("2026-10-06T12-45-25"))"
+        await files.write(Self.meta(id: Self.thread), at: earlier)
+        await files.failNext(.read, path: earlier, with: TransportError.hostFileUnreadable(status: 3))
+        #expect(try await Self.locate(files).get().live?.path == path)
+
+        await files.setAccountDirectories(["/u/account-a"], for: .codex)
+        await files.failNext(.read, path: earlier, with: TransportError.hostFileUnreadable(status: 3))
+        await #expect(throws: TransportError.hostFileUnreadable(status: 3)) { try await Self.locate(files) }
+    }
+
+    /// With nothing found anywhere, the refusal is what Chat reports.
+    @Test func anUnreadableAccountIsReportedWhenNoAccountHasTheThread() async throws {
+        let files = VirtualHostFiles()
+        await files.setAccountDirectories(["/home/dev/.codex-work"], for: .codex)
+        await files.failNext(
+            .list, path: "/home/dev/.codex-work/archived_sessions", with: TransportError.hostFileUnreadable(status: 3))
+        await #expect(throws: TransportError.hostFileUnreadable(status: 3)) { try await Self.locate(files) }
     }
 }
