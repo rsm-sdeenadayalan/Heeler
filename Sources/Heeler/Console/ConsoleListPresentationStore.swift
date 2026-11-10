@@ -14,9 +14,9 @@ enum ConsoleListPresentationMode: String, CaseIterable, Identifiable, Sendable {
     /// Toolbar / picker label for the presentation switcher.
     var title: String {
         switch self {
-        case .flat: "All Agents"
-        case .grouped: "By Host"
-        case .byWorkspace: "By Workspace"
+        case .flat: String(localized: "All Agents")
+        case .grouped: String(localized: "By Host")
+        case .byWorkspace: String(localized: "By Workspace")
         }
     }
 
@@ -55,8 +55,8 @@ struct ConsoleWorkspaceSection: Identifiable, Equatable, Sendable {
     var isNested: Bool { parentID != nil }
     var statusCounts: ConsoleHostAgentStatusCounts { .init(agents: agents) }
     var accessibilityValue: String {
-        let count = agents.count == 1 ? "1 Agent" : "\(agents.count) Agents"
-        return [count, isCollapsed ? "Collapsed" : "Expanded",
+        let count = agents.count == 1 ? String(localized: "1 Agent") : String(localized: "\(agents.count) Agents")
+        return [count, isCollapsed ? String(localized: "Collapsed") : String(localized: "Expanded"),
                 ConsoleHostSectionHeaderPresentation.statusText(items: statusCounts.items)]
             .compactMap { $0 }.joined(separator: ", ")
     }
@@ -180,8 +180,8 @@ struct ConsoleWorkspaceCard: Identifiable, Equatable, Sendable {
     }
 
     var accessibilityValue: String {
-        let count = agents.count == 1 ? "1 Agent" : "\(agents.count) Agents"
-        return [count, isCollapsed ? "Collapsed" : "Expanded",
+        let count = agents.count == 1 ? String(localized: "1 Agent") : String(localized: "\(agents.count) Agents")
+        return [count, isCollapsed ? String(localized: "Collapsed") : String(localized: "Expanded"),
                 ConsoleHostSectionHeaderPresentation.statusText(
                     items: ConsoleHostAgentStatusCounts(agents: agents).items)]
             .compactMap { $0 }.joined(separator: ", ")
@@ -267,16 +267,18 @@ struct ConsoleCheckoutTitle: Equatable, Sendable {
         return reads.first { String(decoding: $0.checkout.topLevel, as: UTF8.self) == path }?.head.branch
     }
 
+    /// Each shape is one whole phrase; git's "detached" stays git's word.
     var accessibilityLabel: String {
         switch role {
         case .workspace:
             return title
         case .mainCheckout:
-            if detail != nil { return "\(title), detached" }
-            return isPending ? title : "Branch \(title)"
+            if detail != nil { return String(localized: "\(title), detached") }
+            return isPending ? title : String(localized: "Branch \(title)")
         case .worktree:
-            let branch = detail.map { $0 == Self.detachedText ? "detached" : "branch \($0)" }
-            return ["\(title), worktree", branch].compactMap { $0 }.joined(separator: ", ")
+            guard let detail else { return String(localized: "\(title), worktree") }
+            if detail == Self.detachedText { return String(localized: "\(title), worktree, detached") }
+            return String(localized: "\(title), worktree, branch \(detail)")
         }
     }
 }
@@ -329,11 +331,60 @@ struct ConsoleHostAgentStatusCounts: Equatable {
     }
 }
 
+/// One choice of the Agents list's status filter. Blocked carries Error:
+/// both ask for the user, and the list already sorts them together.
+enum ConsoleAgentStatusFilter: String, CaseIterable, Identifiable, Sendable {
+    case blocked, working, done, idle
+
+    var id: String { rawValue }
+
+    init?(_ status: AgentStatus) {
+        switch status {
+        case .blocked, .error: self = .blocked
+        case .working: self = .working
+        case .done: self = .done
+        case .idle: self = .idle
+        default: return nil
+        }
+    }
+
+    /// The choice as the filter lists it, with how many Agents it admits.
+    /// The raw value is the saved token, never shown.
+    func title(count: Int) -> String {
+        switch self {
+        case .blocked: String(localized: "Blocked (\(count))")
+        case .working: String(localized: "Working (\(count))")
+        case .done: String(localized: "Done (\(count))")
+        case .idle: String(localized: "Idle (\(count))")
+        }
+    }
+}
+
+extension Set<ConsoleAgentStatusFilter> {
+    /// Empty admits everything; an unknown status shows only unfiltered.
+    func admits(_ agent: ConsoleAgent) -> Bool {
+        isEmpty || ConsoleAgentStatusFilter(agent.agent.status).map(contains) == true
+    }
+}
+
 struct ConsoleHostAgentStatusCount: Identifiable, Equatable {
     let status: AgentStatus
     let count: Int
 
     var id: String { status.rawValue }
+
+    /// "2 working", as a count pill says it. The statuses
+    /// `ConsoleHostAgentStatusCounts` counts each have a whole phrase, the
+    /// same ones VoiceOver hears from the Host header.
+    var text: String {
+        switch status {
+        case .blocked: String(localized: "\(count) blocked")
+        case .error: count == 1 ? String(localized: "1 error") : String(localized: "\(count) errors")
+        case .working: String(localized: "\(count) working")
+        case .done: String(localized: "\(count) done")
+        default: "\(count) \(status.displayTitle ?? status.rawValue)"
+        }
+    }
 }
 
 /// Persists the Console presentation choice and Host/Workspace collapse state,
@@ -352,12 +403,13 @@ final class ConsoleListPresentationStore {
     func workspaceSections(
         hosts: [Host], agents: [ConsoleAgent],
         savedStructures: [Host.ID: [ChatCachedWorkspace]] = [:],
-        filteredHostID: Host.ID? = nil, searchQuery: String = ""
+        filteredHostIDs: Set<Host.ID> = [], searchQuery: String = ""
     ) -> [ConsoleWorkspaceSection] {
         let isSearching = !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !statusFilter.isEmpty
         let collapsedIDs = collapsedWorkspaceIDs
         return sections(
-            hosts: hosts, agents: agents, filteredHostID: filteredHostID, searchQuery: searchQuery
+            hosts: hosts, agents: agents, filteredHostIDs: filteredHostIDs, searchQuery: searchQuery
         ).flatMap { host in
             let buckets = Dictionary(grouping: host.agents, by: \.agent.workspaceID)
             var order: [String] = []
@@ -426,7 +478,7 @@ final class ConsoleListPresentationStore {
                     ConsoleWorkspaceSection.ID(hostID: host.id, workspaceID: $0)
                 }
                 var section = ConsoleWorkspaceSection(
-                    id: id, title: label ?? (workspaceID.isEmpty ? "Unknown Workspace" : workspaceID),
+                    id: id, title: label ?? (workspaceID.isEmpty ? String(localized: "Unknown Workspace") : workspaceID),
                     hostName: host.hostDisplayName, agents: members(workspaceID),
                     isCollapsed: !isSearching && collapsedIDs.contains(id),
                     parentID: parentID)
@@ -467,6 +519,20 @@ final class ConsoleListPresentationStore {
     private static let modeDefaultsKey = "console-list.presentation-mode"
     private static let collapsedHostsDefaultsKey = "console-list.collapsed-hosts"
     private static let collapsedWorkspacesDefaultsKey = "console-list.collapsed-workspaces"
+    private static let statusFilterDefaultsKey = "console-list.status-filter"
+
+    /// The statuses the Agents list shows; empty shows every Agent.
+    private(set) var statusFilter: Set<ConsoleAgentStatusFilter>
+
+    func toggleStatusFilter(_ filter: ConsoleAgentStatusFilter) {
+        if !statusFilter.insert(filter).inserted { statusFilter.remove(filter) }
+        defaults.set(statusFilter.map(\.rawValue).sorted(), forKey: Self.statusFilterDefaultsKey)
+    }
+
+    func clearStatusFilter() {
+        statusFilter = []
+        defaults.removeObject(forKey: Self.statusFilterDefaultsKey)
+    }
 
     private(set) var mode: ConsoleListPresentationMode
     private var collapsedHostIDs: Set<Host.ID>
@@ -485,6 +551,9 @@ final class ConsoleListPresentationStore {
         collapsedWorkspaceIDs = Set(
             defaults.data(forKey: Self.collapsedWorkspacesDefaultsKey)
                 .flatMap { try? JSONDecoder().decode([ConsoleWorkspaceSection.ID].self, from: $0) } ?? [])
+        statusFilter = Set(
+            (defaults.stringArray(forKey: Self.statusFilterDefaultsKey) ?? [])
+                .compactMap(ConsoleAgentStatusFilter.init(rawValue:)))
     }
 
     func select(_ mode: ConsoleListPresentationMode) {
@@ -518,7 +587,7 @@ final class ConsoleListPresentationStore {
     func sections(
         hosts: [Host],
         console: ConsoleStore,
-        filteredHostID: Host.ID? = nil,
+        filteredHostIDs: Set<Host.ID> = [],
         searchQuery: String = ""
     ) -> [ConsoleHostSection] {
         sections(
@@ -528,7 +597,7 @@ final class ConsoleListPresentationStore {
             hostStandingFailures: console.hostStandingFailures,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
             hostSyncErrors: console.hostSyncErrors,
-            filteredHostID: filteredHostID,
+            filteredHostIDs: filteredHostIDs,
             searchQuery: searchQuery)
     }
 
@@ -537,13 +606,13 @@ final class ConsoleListPresentationStore {
     func workspaceSections(
         hosts: [Host],
         console: ConsoleStore,
-        filteredHostID: Host.ID? = nil,
+        filteredHostIDs: Set<Host.ID> = [],
         searchQuery: String = ""
     ) -> [ConsoleWorkspaceSection] {
         workspaceSections(
             hosts: hosts, agents: console.chatDisplayAgents,
             savedStructures: console.savedWorkspaceStructures,
-            filteredHostID: filteredHostID, searchQuery: searchQuery)
+            filteredHostIDs: filteredHostIDs, searchQuery: searchQuery)
     }
 
     /// Projects one section per catalog Host, in catalog order. `agents` is
@@ -556,16 +625,20 @@ final class ConsoleListPresentationStore {
         hostStandingFailures: [Host.ID: TransportError] = [:],
         hostsAwaitingSnapshot: Set<Host.ID> = [],
         hostSyncErrors: [Host.ID: String] = [:],
-        filteredHostID: Host.ID? = nil,
+        filteredHostIDs: Set<Host.ID> = [],
         searchQuery: String = ""
     ) -> [ConsoleHostSection] {
         let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        let searchedAgents = trimmedQuery.isEmpty ? agents : agents.filter { $0.matchesAgentSearch(trimmedQuery) }
+        let searchedAgents = agents.filter {
+            (trimmedQuery.isEmpty || $0.matchesAgentSearch(trimmedQuery)) && statusFilter.admits($0)
+        }
+        // A status filter narrows like a query: only matches, never folded away.
+        let isNarrowed = !trimmedQuery.isEmpty || !statusFilter.isEmpty
         let agentsByHost = Dictionary(grouping: searchedAgents, by: \.hostID)
         var projectedHostIDs: Set<Host.ID> = []
 
         return hosts.compactMap { host in
-            guard filteredHostID == nil || host.id == filteredHostID else { return nil }
+            guard filteredHostIDs.isEmpty || filteredHostIDs.contains(host.id) else { return nil }
             guard projectedHostIDs.insert(host.id).inserted else { return nil }
 
             let hostAgents = agentsByHost[host.id] ?? []
@@ -580,7 +653,7 @@ final class ConsoleListPresentationStore {
             // whatever its Host's state (#292, #316): a query asks for Agents,
             // and Hosts that cannot answer only bury the matches. Without a
             // query every catalog Host stays visible, including empty ones.
-            if !trimmedQuery.isEmpty && hostAgents.isEmpty { return nil }
+            if isNarrowed && hostAgents.isEmpty { return nil }
             return ConsoleHostSection(
                 hostID: host.id,
                 hostDisplayName: host.displayName,
@@ -589,7 +662,7 @@ final class ConsoleListPresentationStore {
                 statusPresentation: statusPresentation,
                 agents: hostAgents,
                 // A match is never hidden behind a collapsed Host.
-                isCollapsed: trimmedQuery.isEmpty && isCollapsed(host.id),
+                isCollapsed: !isNarrowed && isCollapsed(host.id),
                 statusCounts: ConsoleHostAgentStatusCounts(agents: hostAgents))
         }
     }

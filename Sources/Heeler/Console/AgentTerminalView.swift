@@ -254,7 +254,7 @@ struct AgentTerminalView: View {
     /// Survives same-screen terminal replacement so a raised Direct Input
     /// keyboard is reclaimed without raising one that was down.
     @State private var directKeyboardIntent = DirectInputKeyboardIntent()
-    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
     @State private var isConfirmingClose = false
@@ -275,7 +275,7 @@ struct AgentTerminalView: View {
     /// The control that opened Attach Links, which its popover anchors to.
     @State private var attachLinksOrigin: AttachLinksOrigin?
     @State private var closeErrorMessage: String?
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.themeAppearance) private var themeAppearance
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -525,6 +525,10 @@ struct AgentTerminalView: View {
             guard composerToDirectHandoffID == id else { return }
             if succeeded {
                 settlingKeyboardHandoffID = id
+                // The terminal that accepted is the one the request was
+                // delivered to; its leash starts with the request.
+                keyboardInset.acceptResponderHandoff(
+                    id, destinationTimeout: HeelerTerminalView.keyboardTransitionFallbackDelay)
                 applyInputMode(.direct, preservingKeyboardHandoff: true)
             } else {
                 cancelKeyboardHandoff(id)
@@ -538,8 +542,8 @@ struct AgentTerminalView: View {
                 cancelKeyboardHandoff(id)
             }
         }
-        screen.theme = terminal.themes.theme
-        screen.displayColors = terminal.themes.colors(for: colorScheme)
+        screen.theme = terminal.themes.terminalTheme(for: themeAppearance)
+        screen.displayColors = terminal.themes.colors(for: themeAppearance)
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
         screen.onFontSizeChanged = { fontSize in terminal.zoom.setFontSize(fontSize) }
@@ -581,7 +585,9 @@ struct AgentTerminalView: View {
         terminalSurface
         .photosPicker(
             isPresented: $isSelectingPhoto,
-            selection: $selectedPhoto,
+            selection: $selectedPhotos,
+            maxSelectionCount: 10,
+            selectionBehavior: .ordered,
             matching: .images)
         .fileImporter(
             isPresented: $isSelectingFile,
@@ -642,7 +648,7 @@ struct AgentTerminalView: View {
         }
         .sheet(isPresented: $isRenamingAgent) {
             RenameSheetView(
-                title: "Rename Agent",
+                title: String(localized: "Rename Agent"),
                 store: RenameStore(
                     subject: .agent(detectedKind: agent.agent.kind),
                     currentValue: agent.agent.name ?? ""
@@ -656,7 +662,7 @@ struct AgentTerminalView: View {
         }
         .sheet(isPresented: $isRenamingWorkspace) {
             RenameSheetView(
-                title: "Rename Workspace",
+                title: String(localized: "Rename Workspace"),
                 store: RenameStore.workspace(
                     currentLabel: agent.workspaceLabel ?? ""
                 ) { [console, agent] label in
@@ -676,7 +682,7 @@ struct AgentTerminalView: View {
                 WorktreeDetailView(
                     store: worktreeStore,
                     reportAfterLeaving: console.outcomeReporter(
-                        on: agent.hostID, title: "Couldn't Remove Worktree")
+                        on: agent.hostID, title: String(localized: "Couldn't Remove Worktree"))
                 ) { _ in
                     isShowingWorktree = false
                 }
@@ -739,16 +745,17 @@ struct AgentTerminalView: View {
         } message: {
             Text(
                 attach.attachLinkOpenFailure?.message
-                    ?? "This link couldn't be opened.")
+                    ?? String(localized: "This link couldn't be opened."))
         }
     }
 
     private var lifecycleSurface: some View {
         alertSurface
-        .onChange(of: selectedPhoto) { _, item in
-            guard let item else { return }
-            selectedPhoto = nil
-            session.staging.begin(.photo(PhotosPickerImageSelection(item: item)))
+        .onChange(of: selectedPhotos) { _, items in
+            guard !items.isEmpty else { return }
+            selectedPhotos = []
+            let staging = session.staging
+            Task { await staging.beginAll(items.map { .photo(PhotosPickerImageSelection(item: $0)) }) }
         }
         // Not the phase: a background→foreground round trip the grace period
         // absorbs never leaves `.active`, so the return that has to prove the
@@ -796,7 +803,7 @@ struct AgentTerminalView: View {
         .onDisappear {
             attach.close.didLeaveScreen(
                 reportingTo: console.outcomeReporter(
-                    on: agent.hostID, title: "Couldn't Close Agent"))
+                    on: agent.hostID, title: String(localized: "Couldn't Close Agent")))
             interactionProbe?.value?.disconnect()
             messageJump.resetSession()
             if let onRetainDeparture {
@@ -1163,7 +1170,7 @@ struct AgentTerminalView: View {
                 controlPlacement: headerControlPlacement)
             .environment(
                 \.colorScheme,
-                terminal.themes.selection(for: colorScheme).chromeColorScheme(for: colorScheme))
+                terminal.themes.selection(for: themeAppearance).chromeColorScheme(for: themeAppearance))
             .padding(.horizontal, 12)
             .padding(.top, backHeaderTop)
             .onChange(of: isBackHeaderExpanded) { _, expanded in
@@ -1192,14 +1199,14 @@ struct AgentTerminalView: View {
         // can take the home-indicator inset for a keyboard's, and a
         // container-only background then leaves it the app's own color.
         .background {
-            terminal.themes.selection(for: colorScheme)
-                .surfaceBackground(for: colorScheme)
+            terminal.themes.selection(for: themeAppearance)
+                .surfaceBackground(for: themeAppearance)
                 .ignoresSafeArea(.all, edges: surfaceEdges)
         }
         .ignoresSafeArea(.container, edges: .top)
         .toolbarColorScheme(
-            terminal.themes.selection(for: colorScheme)
-                .chromeColorScheme(for: colorScheme),
+            terminal.themes.selection(for: themeAppearance)
+                .chromeColorScheme(for: themeAppearance),
             for: .navigationBar)
         .navigationBarBackButtonHidden(true)
         .interactivePopGestureEnabled(showsBackButton)
@@ -1317,8 +1324,8 @@ struct AgentTerminalView: View {
                     status: agent.agent.status,
                     hostTelemetry: hostTelemetry,
                     changes: statusChanges,
-                    chromeColorScheme: terminal.themes.selection(for: colorScheme)
-                        .chromeColorScheme(for: colorScheme),
+                    chromeColorScheme: terminal.themes.selection(for: themeAppearance)
+                        .chromeColorScheme(for: themeAppearance),
                     isKeyboardUp: directSwitcherKeyboardIsUp,
                     isToolsKeyboardPresented: usesDirectToolsKeyboard),
                 interactions: .init(
@@ -1352,6 +1359,14 @@ struct AgentTerminalView: View {
     private var sendPolicy: ComposerDeliveryPolicy {
         var policy = ComposerDeliveryPolicy.terminal
         policy.coreAttach = attach
+        let settings = session.settingOverrides
+        policy.preflight = { _ in
+            if settings.switchingSetting != nil {
+                return .inputNotReady(
+                    String(localized: "Claude Code is reading or changing a setting. Try again in a moment."))
+            }
+            return nil
+        }
         return policy
     }
 
@@ -1361,8 +1376,8 @@ struct AgentTerminalView: View {
             status: agent.agent.status,
             hostTelemetry: hostTelemetry,
             changes: statusChanges,
-            chromeColorScheme: terminal.themes.selection(for: colorScheme)
-                .chromeColorScheme(for: colorScheme),
+            chromeColorScheme: terminal.themes.selection(for: themeAppearance)
+                .chromeColorScheme(for: themeAppearance),
             switcher: agentSwitcher,
             keyboardHandoff: keyboardHandoff,
             inheritsKeyboardHandoff: inheritsKeyboardHandoff,
@@ -1482,7 +1497,7 @@ struct AgentTerminalView: View {
     private func interruptAgent() -> AgentInterruptOutcome {
         keyboardControl.noteReliableInputBegan()
         return attach.sendEscapeKey()
-            ? .sent : .failed("The terminal isn't connected, so Esc wasn't sent.")
+            ? .sent : .failed(String(localized: "The terminal isn't connected, so Esc wasn't sent."))
     }
 
     private func selectInputMode(_ mode: AgentInputMode) {
@@ -1563,7 +1578,7 @@ struct AgentTerminalView: View {
         case .direct:
             UIAccessibility.post(
                 notification: .announcement,
-                argument: "Keyboard. Typing into the Agent.")
+                argument: String(localized: "Keyboard. Typing into the Agent."))
             if !keyboardControl.isFirstResponder {
                 Task { @MainActor in
                     await Task.yield()
@@ -1573,10 +1588,14 @@ struct AgentTerminalView: View {
                 }
             }
         case .composer:
-            UIAccessibility.post(notification: .announcement, argument: "Composer.")
+            UIAccessibility.post(notification: .announcement, argument: String(localized: "Composer."))
         }
     }
 
+    /// Drops this view's handoff and releases the inset's freeze. A switch
+    /// the destination already accepted stands. The inset's guard calls this
+    /// after it has released and reconciled the freeze itself, so for an
+    /// accepted handoff this only clears the view's state.
     private func cancelKeyboardHandoff(_ id: UUID) {
         let destinationAccepted = settlingKeyboardHandoffID == id
         var ownsHandoff = false
@@ -1622,6 +1641,8 @@ struct AgentTerminalView: View {
             return
         }
         settlingKeyboardHandoffID = id
+        // The Composer has no timeout of its own; the inset's is its.
+        keyboardInset.acceptResponderHandoff(id)
         applyInputMode(.composer, preservingKeyboardHandoff: true)
     }
 
@@ -1840,7 +1861,7 @@ struct AgentTerminalView: View {
 
     /// The dialog wears the terminal's theme, not the system's.
     private var themePalette: TerminalThemePalette {
-        terminal.themes.selection(for: colorScheme).palette(for: colorScheme)
+        terminal.themes.selection(for: themeAppearance).palette(for: themeAppearance)
     }
 
     private var messageJumpAvailability: MessageJumpControlAvailability {
@@ -1918,7 +1939,7 @@ struct AgentTerminalView: View {
     }
 
     private var connectionRecoveryTitle: String? {
-        if attach.terminalStatus == .reconnecting { return "Reconnecting…" }
+        if attach.terminalStatus == .reconnecting { return String(localized: "Reconnecting…") }
         return console.connectionRecoveryTitle(for: agent.hostID)
     }
 
@@ -1969,7 +1990,7 @@ struct AgentTerminalView: View {
             case .finished:
                 TerminalStatusDialog(
                     glyph: .symbol("stop.circle"),
-                    title: "Agent Ended",
+                    title: String(localized: "Agent Ended"),
                     message: console.agentEndedMessage(of: agent.id, keepingTo: session.corePin)
                         ?? presentation.message,
                     palette: themePalette,

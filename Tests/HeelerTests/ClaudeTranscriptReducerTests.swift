@@ -459,6 +459,35 @@ struct ClaudeTranscriptReducerTests {
                 == "[Image #1] and [Image #2]")
     }
 
+    @Test("A scheduled task opens its own turn as a line, not a bubble, and settles its enqueue")
+    func scheduledTaskOpensATurn() throws {
+        // As Claude Code 2.1.318 recorded a cron task firing after a typed turn.
+        let reducer = ClaudeSample.reducer(ClaudeSample.lines(
+            #"""
+            {"type":"user","uuid":"u1","parentUuid":null,"origin":{"kind":"human"},"promptSource":"typed","message":{"role":"user","content":"turn it on"}}
+            {"type":"assistant","uuid":"a1","parentUuid":"u1","message":{"id":"m1","model":"claude-opus-5-5","content":[{"type":"text","text":"Done, it is on."}]}}
+            {"type":"queue-operation","operation":"enqueue","content":"[cron] report the pool","sessionId":"s1"}
+            {"type":"queue-operation","operation":"dequeue","sessionId":"s1"}
+            {"type":"system","subtype":"stop_hook_summary","uuid":"h1","parentUuid":"a1"}
+            {"type":"system","subtype":"scheduled_task_fire","uuid":"f1","parentUuid":"h1","content":"Running scheduled task (Nov 6 6:36pm)","prompt":"[cron] report the pool","cron":"23 * * * *"}
+            {"type":"user","uuid":"p2","parentUuid":"f1","isMeta":true,"promptSource":"system","turnOrigin":"scheduled","message":{"role":"user","content":"[cron] report the pool"}}
+            {"type":"assistant","uuid":"a2","parentUuid":"p2","message":{"id":"m2","model":"claude-opus-5-5","content":[{"type":"text","text":"The pool is fine."}]}}
+            """#))
+        let transcript = reducer.transcript(ChatProjectionContext(activity: .idle))
+
+        #expect(transcript.turns.map(\.firstEntryID.rawValue) == ["user:u1", "notice:f1"])
+        guard case .notice(let notice) = ClaudeSample.entry("notice:f1", in: transcript) else {
+            Issue.record("no scheduled task line")
+            return
+        }
+        #expect(notice.kind == .scheduledTask)
+        #expect(notice.detail == "[cron] report the pool")
+        #expect(ClaudeSample.entry("user:p2", in: transcript) == nil)
+        #expect(ClaudeTranscriptProjection.waitingEnqueues(reducer.index).isEmpty)
+        // Nobody sent it, so it is no evidence for a Send of the same words.
+        #expect(transcript.recordedPrompts.map(\.text) == ["turn it on"])
+    }
+
     @Test("An image's source is found after any number of attachments, and one record can name several")
     func imageSourcesAfterAttachments() throws {
         let transcript = ClaudeSample.transcript(
@@ -486,6 +515,20 @@ struct ClaudeTranscriptReducerTests {
         #expect(prompts.map(\.pastedImagePaths) == [["/tmp/one.png"], ["/tmp/one.png"], nil])
         #expect(prompts[0].entryID == ChatEntryID("user:p1"))
         #expect(prompts[1].entryID == ChatEntryID("user:p1"))
+    }
+
+    @Test("A prompt's bubble keeps the files its pasted images came from; a clipboard image has none")
+    func promptImagePaths() {
+        let transcript = ClaudeSample.transcript(
+            #"""
+            {"type":"user","uuid":"p1","parentUuid":null,"message":{"role":"user","content":[{"type":"text","text":"[Image #1]what changed"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AA"}}]}}
+            {"type":"user","uuid":"m1","parentUuid":"p1","isMeta":true,"message":{"role":"user","content":[{"type":"text","text":"[Image: source: /tmp/one.png]"}]}}
+            {"type":"user","uuid":"p2","parentUuid":"m1","message":{"role":"user","content":[{"type":"text","text":"[Image #2] from the clipboard"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AA"}}]}}
+            """#)
+        let messages = transcript.entries.compactMap { entry -> ChatUserMessage? in
+            if case .user(let message) = entry.content { message } else { nil }
+        }
+        #expect(messages.map(\.imagePaths) == [["/tmp/one.png"], []])
     }
 
     // MARK: - Subagent and first probe

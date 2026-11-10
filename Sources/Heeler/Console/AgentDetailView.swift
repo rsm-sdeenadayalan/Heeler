@@ -35,6 +35,7 @@ struct AgentDetailView: View {
     @State private var focus = AgentFocusCoordinator()
     @State private var hasAppeared = false
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.themeColors) private var themeColors
     @State private var session: AgentComposerSession
     /// This detail's presence in `session`, outside a scene root.
     @State private var presenceToken = UUID()
@@ -472,6 +473,10 @@ struct AgentDetailView: View {
         .navigationDestination(item: changesRoute) { route in
             ChangesView(store: route.store)
                 .environment(\.changesScreenPresence, changesScreenPresence)
+                // A diff opened from Chat looks like Chat.
+                .environment(
+                    \.fileDiffTheme,
+                    effectiveSurface == .chat ? themeColors : nil)
         }
         // Open Terminal on an iPhone: a short detour, so Back and the swipe
         // come back to this Agent rather than to the list.
@@ -511,7 +516,7 @@ struct AgentDetailView: View {
         .onChange(of: activity.activationCount) { prepareRetainedAgent() }
         .confirmationDialog("Open Terminal", isPresented: $isChoosingTerminal, titleVisibility: .visible) {
             ForEach(workspaceShells) { @Sendable target in
-                Button("\(target.displayTitle) · \(target.tabLabel ?? "Terminal")") {
+                Button(target.displayTitle + " · " + (target.tabLabel ?? String(localized: "Terminal"))) {
                     showWorkspaceTerminal(target)
                 }
             }
@@ -684,7 +689,7 @@ struct AgentDetailView: View {
                 shellRoute?.terminal.id == route.terminal.id && isVisible()
             },
             keyboardHandoff: keyboardHandoff,
-            backTitle: "Back to Agent",
+            backTitle: String(localized: "Back to Agent"),
             onBack: { shellRoute = nil })
         // A pushed screen takes the stack's environment, not this detail's,
         // and the Console sets Back inside the stack: without this the
@@ -730,7 +735,7 @@ struct AgentDetailView: View {
                 }
                 guard let target = createdTerminal.resolve(in: console.terminals, hostID: agent.hostID) else {
                     keyboardHandoff.cancelShellTerminal()
-                    terminalOpenFailure = "The terminal was created, but its Workspace hasn't refreshed yet. Try Open Terminal again to refresh it."
+                    terminalOpenFailure = String(localized: "The terminal was created, but its Workspace hasn't refreshed yet. Try Open Terminal again to refresh it.")
                     return
                 }
                 if isVisible() { showWorkspaceTerminal(target) }

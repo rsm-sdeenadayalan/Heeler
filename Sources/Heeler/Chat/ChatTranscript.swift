@@ -83,9 +83,14 @@ struct ChatEntry: Identifiable, Equatable, Codable, Sendable {
 /// because it is what the person typed.
 struct ChatUserMessage: Equatable, Codable, Sendable {
     var text: String
-    /// Images the prompt carried. Chat shows placeholders and never loads
-    /// image data from a transcript.
+    /// Images the prompt carried. Chat never loads image data from a
+    /// transcript.
     var imageCount: Int
+    /// The Host files the prompt's images were pasted from, in order, as
+    /// the program recorded them, which its `[Image #N]` placeholders open.
+    /// Fewer than `imageCount` when an image came from no file, such as the
+    /// clipboard.
+    var imagePaths: [String]
     /// Short labels for other attachments the program recorded (a mention, a
     /// file reference), shown as chips.
     var attachmentLabels: [String]
@@ -96,15 +101,29 @@ struct ChatUserMessage: Equatable, Codable, Sendable {
     var wasQueued: Bool
 
     init(
-        text: String, imageCount: Int = 0, attachmentLabels: [String] = [],
+        text: String, imageCount: Int = 0, imagePaths: [String] = [], attachmentLabels: [String] = [],
         command: ChatCommandInvocation? = nil, wasQueued: Bool = false
     ) {
         self.text = text
         self.imageCount = imageCount
+        self.imagePaths = imagePaths
         self.attachmentLabels = attachmentLabels
         self.command = command
         self.wasQueued = wasQueued
     }
+
+    /// A message saved before image paths were kept has none, so other
+    /// programs' cached conversations still read.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = try container.decode(String.self, forKey: .text)
+        imageCount = try container.decode(Int.self, forKey: .imageCount)
+        imagePaths = try container.decodeIfPresent([String].self, forKey: .imagePaths) ?? []
+        attachmentLabels = try container.decode([String].self, forKey: .attachmentLabels)
+        command = try container.decodeIfPresent(ChatCommandInvocation.self, forKey: .command)
+        wasQueued = try container.decode(Bool.self, forKey: .wasQueued)
+    }
+
 
     /// What the bubble shows: a command reads as `/name arguments`.
     var displayText: String {
@@ -810,6 +829,8 @@ struct ChatNotice: Equatable, Codable, Sendable {
         case review
         /// Answers to questions asked outside a tool.
         case answered
+        /// A scheduled task fired and started a turn of its own.
+        case scheduledTask
         /// Anything else worth a line.
         case system
     }
@@ -1213,6 +1234,12 @@ struct ChatTranscript: Equatable, Sendable {
     var entries: [ChatEntry]
     /// The conversation's title, when the program records one.
     var title: String?
+    /// The model of the newest reply, when the program records one.
+    var model: String? = nil
+    /// The reasoning effort of the newest reply, when the program records one.
+    var effort: String? = nil
+    /// The program's own permission mode (Claude Code's `permissionMode`).
+    var permissionMode: String? = nil
     /// True when the loaded lines need older history to be complete: the
     /// window does not start at the file's head, or the current branch's
     /// chain continues above it.

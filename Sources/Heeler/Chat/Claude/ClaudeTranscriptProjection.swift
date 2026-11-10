@@ -24,16 +24,19 @@ enum ClaudeTranscriptProjection {
         index: ClaudeTranscriptIndex, chain: ClaudeChain, role: ClaudeTranscriptReducer.Role,
         context: ChatProjectionContext, transcriptPath: String? = nil
     ) -> ChatTranscript {
+        let sources = imageSources(index.recordsByPosition, indexed: index.records)
         var builder = Builder(
-            chain: chain, index: index, role: role, activity: context.activity, transcriptPath: transcriptPath)
+            chain: chain, index: index, role: role, activity: context.activity, transcriptPath: transcriptPath,
+            imageSources: sources)
         builder.build()
         let waiting = role == .main ? builder.addWaitingPrompts(waitingEnqueues(index)) : [:]
-        return ChatTranscript(
+        var transcript = ChatTranscript(
             entries: builder.entries, title: index.title,
             needsOlderHistory: context.windowStart > 0,
             pendingRequests: builder.pendingRequests,
             recordedPrompts: role == .main
-                ? recordedPrompts(index, entryByRecord: builder.entryByRecord, waiting: waiting) : [],
+                ? recordedPrompts(
+                    index, entryByRecord: builder.entryByRecord, waiting: waiting, imageSources: sources) : [],
             links: index.links, diagnostics: index.diagnostics,
             backgroundWork: role == .main ? builder.backgroundWork : [],
             latestPromptOffset: builder.latestPromptOffset,
@@ -42,6 +45,12 @@ enum ClaudeTranscriptProjection {
             turns: role == .main ? builder.turns : [],
             precedingTurnEnd: role == .main ? builder.precedingTurnEnd : nil,
             unrecordedEntryIDs: Set(waiting.values))
+        if role == .main {
+            transcript.model = index.model
+            transcript.effort = index.effort
+            transcript.permissionMode = index.permissionMode
+        }
+        return transcript
     }
 
     /// The output `record` holds for the call `use`, as its row's preview
@@ -67,11 +76,11 @@ enum ClaudeTranscriptProjection {
     /// the file. Task notifications and other machine input never count.
     static func recordedPrompts(
         _ index: ClaudeTranscriptIndex, entryByRecord: [String: ChatEntryID],
-        waiting: [UInt64: ChatEntryID] = [:]
+        waiting: [UInt64: ChatEntryID] = [:], imageSources: [String: [String]]
     ) -> [ChatRecordedPrompt] {
         var prompts: [(prompt: ChatRecordedPrompt, rawKey: String)] = []
+        var fires: [(offset: UInt64, key: String)] = []
         let byPosition = index.recordsByPosition
-        let imageSources = imageSources(byPosition, indexed: index.records)
         for (position, record) in byPosition.enumerated() where !record.isSidechain && record.teamName == nil {
             if let command = unknownCommand(record) {
                 let next = byPosition.indices.contains(position + 1) ? byPosition[position + 1] : nil
@@ -82,6 +91,13 @@ enum ClaudeTranscriptProjection {
                         ChatRecordedPrompt(offset: record.byteOffset, text: text, entryID: entryByRecord[record.uuid]),
                         ClaudeTranscriptReducer.echoKey(text)
                     ))
+                continue
+            }
+            // A scheduled fire settles its enqueue, but nobody sent it.
+            if record.kind == .system("scheduled_task_fire") {
+                if let prompt = record.system?.scheduledPrompt.flatMap(promptText) {
+                    fires.append((record.byteOffset, ClaudeTranscriptReducer.echoKey(prompt)))
+                }
                 continue
             }
             guard let raw = typedText(of: record, indexed: index.records) else { continue }
@@ -104,6 +120,12 @@ enum ClaudeTranscriptProjection {
             guard let content = operation.content, let text = promptText(content) else { continue }
             let key = ClaudeTranscriptReducer.echoKey(text)
             let delivery = prompts.first { $0.prompt.offset > operation.offset && $0.rawKey == key }?.prompt
+            // The task's own enqueue, which its fire delivers before any Send could.
+            if let fire = fires.first(where: { $0.offset > operation.offset && $0.key == key }),
+                fire.offset < delivery?.offset ?? .max
+            {
+                continue
+            }
             enqueued.append(
                 ChatRecordedPrompt(
                     offset: operation.offset, text: text, entryID: delivery?.entryID ?? waiting[operation.offset],
@@ -218,6 +240,9 @@ enum ClaudeTranscriptProjection {
         case .system("local_command"):
             guard case .command(let typed) = ClaudeUserText.classify(record.system?.content ?? "") else { return nil }
             return (record.system?.commandRun ?? typed).displayText
+        case .system("scheduled_task_fire"):
+            // Delivers the enqueue Claude Code wrote for the task's prompt.
+            return record.system?.scheduledPrompt.flatMap(promptText)
         default:
             return nil
         }
@@ -248,7 +273,8 @@ enum ClaudeTranscriptProjection {
     }
 
     /// Claude Code's fixed opening of a compaction summary (2.1.301), which
-    /// would fill the divider's few preview lines.
+    /// would fill the divider's few preview lines. It is matched against the
+    /// Agent's own English transcript, so it must stay untranslated.
     static let compactionPreamble =
         "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation."
 
@@ -266,6 +292,8 @@ enum ClaudeTranscriptProjection {
         dropLeading(\.isEmpty)
         dropLeading { $0 == "Summary:" }
         dropLeading(\.isEmpty)
+        // The first heading of Claude Code's own English summary, matched,
+        // so it stays untranslated.
         let heading = "1. Primary Request and Intent:"
         if let first = lines.first?.trimmingCharacters(in: .whitespaces), first.hasPrefix(heading) {
             let rest = first.dropFirst(heading.count).trimmingCharacters(in: .whitespaces)
@@ -293,9 +321,9 @@ enum ClaudeTranscriptProjection {
 
     static func modelChangeTitle(from: String?, to: String?) -> String {
         switch (from, to) {
-        case (let from?, let to?): "Switched from \(from) to \(to)"
-        case (nil, let to?): "Switched to \(to)"
-        default: "Switched model"
+        case (let from?, let to?): String(localized: "Switched from \(from) to \(to)")
+        case (nil, let to?): String(localized: "Switched to \(to)")
+        default: String(localized: "Switched model")
         }
     }
 }
@@ -344,6 +372,8 @@ private struct Builder {
     let role: ClaudeTranscriptReducer.Role
     let activity: ChatAgentActivity
     let transcriptPath: String?
+    /// The files each prompt's pasted images came from, by the prompt's uuid.
+    let imageSources: [String: [String]]
 
     private(set) var entries: [ChatEntry] = []
     private(set) var pendingRequests: [ChatPendingRequest] = []
@@ -384,10 +414,11 @@ private struct Builder {
 
     init(
         chain: ClaudeChain, index: ClaudeTranscriptIndex, role: ClaudeTranscriptReducer.Role,
-        activity: ChatAgentActivity, transcriptPath: String?
+        activity: ChatAgentActivity, transcriptPath: String?, imageSources: [String: [String]]
     ) {
         self.chain = chain
         indexed = index.records
+        self.imageSources = imageSources
         self.role = role
         self.activity = activity
         self.transcriptPath = transcriptPath
@@ -543,7 +574,7 @@ private struct Builder {
             placed = add(
                 entryID, at: record, .tool(toolRow(for: use, in: record, status: status, answer: answer)))
         case "EnterPlanMode" where status == .succeeded:
-            placed = add(entryID, at: record, .notice(ChatNotice(kind: .planMode, title: "Entered plan mode")))
+            placed = add(entryID, at: record, .notice(ChatNotice(kind: .planMode, title: String(localized: "Entered plan mode"))))
         default:
             placed = add(
                 entryID, at: record, .tool(toolRow(for: use, in: record, status: status, answer: answer)))
@@ -591,7 +622,7 @@ private struct Builder {
         if structured?.status == "teammate_spawned",
             let name = (use.input.teammateName ?? structured?.teammateName).flatMap(\.nonEmpty)
         {
-            row.subtitle = "Teammate @\(name)"
+            row.subtitle = String(localized: "Teammate @\(name)")
         }
         // A background agent reports through its notification.
         if row.preview == nil, !use.id.isEmpty, let report = notifications[use.id]?.notification.result,
@@ -653,7 +684,7 @@ private struct Builder {
         var item: ChatBackgroundWorkItem
         if Self.isWorkflow(use, result: result) {
             item = ChatBackgroundWorkItem(
-                id: use.id, kind: .workflow, title: result.workflowName.flatMap(\.nonEmpty) ?? "Workflow",
+                id: use.id, kind: .workflow, title: result.workflowName.flatMap(\.nonEmpty) ?? String(localized: "Workflow"),
                 subtitle: result.workflowSummary.flatMap(\.nonEmpty), launchOffset: record.byteOffset)
             if let transcriptPath, let runID = result.runID {
                 item.journalPath = ClaudeTranscriptLocation.workflowJournalPath(
@@ -661,7 +692,7 @@ private struct Builder {
             }
         } else if use.name == "Agent" || use.name == "Task" {
             item = ChatBackgroundWorkItem(
-                id: use.id, kind: .subagent, title: use.input.description.flatMap(\.nonEmpty) ?? "Subagent",
+                id: use.id, kind: .subagent, title: use.input.description.flatMap(\.nonEmpty) ?? String(localized: "Subagent"),
                 subtitle: use.input.subagentType.flatMap(\.nonEmpty), launchOffset: record.byteOffset)
         } else {
             return nil
@@ -792,7 +823,10 @@ private struct Builder {
             guard !prompt.isEmpty || record.imageCount > 0 else { return }
             add(
                 "user:\(record.uuid)", at: record,
-                .user(ChatUserMessage(text: prompt, imageCount: record.imageCount, wasQueued: wasQueued)))
+                .user(
+                    ChatUserMessage(
+                        text: prompt, imageCount: record.imageCount, imagePaths: imageSources[record.uuid] ?? [],
+                        wasQueued: wasQueued)))
         case .command(let invocation):
             // A local command records its output below it; a skill or prompt
             // command records the expanded prompt, which stays hidden.
@@ -805,8 +839,8 @@ private struct Builder {
                     "user:\(record.uuid)", at: record,
                     .user(
                         ChatUserMessage(
-                            text: invocation.displayText, imageCount: record.imageCount, command: invocation,
-                            wasQueued: wasQueued)))
+                            text: invocation.displayText, imageCount: record.imageCount,
+                            imagePaths: imageSources[record.uuid] ?? [], command: invocation, wasQueued: wasQueued)))
             }
         case .localCommandOutput(let output):
             addOutputNotice(output: output, at: record)
@@ -838,7 +872,9 @@ private struct Builder {
             return
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let title = trimmed.hasPrefix("[Request interrupted by user") ? "Interrupted" : ClaudeText.noticeParts(trimmed).title
+        let title =
+            trimmed.hasPrefix("[Request interrupted by user")
+            ? String(localized: "Interrupted") : ClaudeText.noticeParts(trimmed).title
         add("notice:\(record.uuid)", at: record, .notice(ChatNotice(kind: .interrupted, title: title)))
     }
 
@@ -877,7 +913,16 @@ private struct Builder {
         case "agents_killed":
             add(
                 "notice:\(record.uuid)", at: record,
-                .notice(ChatNotice(kind: .stopped, title: "All background agents stopped")))
+                .notice(ChatNotice(kind: .stopped, title: String(localized: "All background agents stopped"))))
+        case "scheduled_task_fire":
+            // Its prompt follows as a meta record; the line stands for both,
+            // not a bubble, since nobody typed it.
+            add(
+                "notice:\(record.uuid)", at: record,
+                .notice(
+                    ChatNotice(
+                        kind: .scheduledTask, title: String(localized: "Scheduled task"),
+                        detail: record.system?.scheduledPrompt)))
         case "informational" where ClaudeTranscriptProjection.unknownCommand(record) != nil:
             addUnknownCommand(record, content: content)
         default:
@@ -1119,7 +1164,7 @@ private struct Builder {
     /// before one of them never gets one.
     private static func isTurnBoundary(_ record: ClaudeRecord) -> Bool {
         switch record.kind {
-        case .system("turn_duration"):
+        case .system("turn_duration"), .system("scheduled_task_fire"):
             return true
         case .user:
             guard record.toolResults.isEmpty, !record.isMeta, !record.isCompactSummary,
@@ -1141,6 +1186,9 @@ private struct Builder {
     /// origin open one too: what follows them is not the turn before.
     private static func opensTurn(_ record: ClaudeRecord, whileOpen: Bool) -> Bool {
         switch record.kind {
+        case .system("scheduled_task_fire"):
+            // Fired between turns; its reply is not the turn before's.
+            return true
         case .system("local_command"):
             guard !whileOpen, case .command = ClaudeUserText.classify(record.system?.content ?? "") else { return false }
             return true

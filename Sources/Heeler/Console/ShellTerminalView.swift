@@ -31,8 +31,8 @@ struct ShellTerminalView: View {
     /// False on a Host whose terminals have no Take Over: any viewer may type.
     var offersTakeOver = true
     var surfaceRetention: TerminalSurfaceRetention?
-    var title = "Terminal"
-    var backTitle = "Back to Agent"
+    var title = String(localized: "Terminal")
+    var backTitle = String(localized: "Back to Agent")
     /// Edge-docked Workspace navigation; nil on surfaces with nowhere to route.
     var workspaceDrawer: WorkspaceTerminalDrawer?
     /// Carries the keyboard state in from the screen that opened this
@@ -48,7 +48,7 @@ struct ShellTerminalView: View {
     @State private var keyboardMode: TerminalKeyboardMode = .text
     @State private var keyboardInset = TerminalKeyboardInset()
     @State private var isConfirmingClose = false
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.themeAppearance) private var themeAppearance
     /// The scene root's window, known before this screen first renders.
     @Environment(\.sceneWindow) private var sceneWindow
     @Environment(\.detailCrossfade) private var detailCrossfade
@@ -120,8 +120,8 @@ struct ShellTerminalView: View {
             Self.prepareKeyboardMode(.text, inset: keyboardInset)
             return true
         }
-        screen.theme = terminal.themes.theme
-        screen.displayColors = terminal.themes.colors(for: colorScheme)
+        screen.theme = terminal.themes.terminalTheme(for: themeAppearance)
+        screen.displayColors = terminal.themes.colors(for: themeAppearance)
         screen.fontSize = terminal.zoom.fontSize
         screen.fontFamily = terminal.fonts.familyName
         screen.onFontSizeChanged = { terminal.zoom.setFontSize($0) }
@@ -221,7 +221,7 @@ struct ShellTerminalView: View {
             if showsShortcutRow {
                 InputShortcutStripRow(
                     strip: InputShortcutStripPresentation(surface: .shellTerminal),
-                    keyAccessibilityHint: "Sends this key to the terminal",
+                    keyAccessibilityHint: String(localized: "Sends this key to the terminal"),
                     sendKey: keyboardControl.sendTerminalKey
                 ) { _ in EmptyView() }
                 .transition(
@@ -335,8 +335,8 @@ struct ShellTerminalView: View {
                     controlPlacement: headerControlPlacement)
                 .environment(
                     \.colorScheme,
-                    terminal.themes.selection(for: colorScheme)
-                        .chromeColorScheme(for: colorScheme))
+                    terminal.themes.selection(for: themeAppearance)
+                        .chromeColorScheme(for: themeAppearance))
                 .padding(.horizontal, 12)
                 .padding(.top, backHeaderTop)
                 .onChange(of: isBackHeaderExpanded) { _, expanded in
@@ -363,14 +363,14 @@ struct ShellTerminalView: View {
             }
             // Through every safe-area region, as Agent detail's surface.
             .background {
-                terminal.themes.selection(for: colorScheme)
-                    .surfaceBackground(for: colorScheme)
+                terminal.themes.selection(for: themeAppearance)
+                    .surfaceBackground(for: themeAppearance)
                     .ignoresSafeArea(.all, edges: surfaceEdges)
             }
             .ignoresSafeArea(.container, edges: .top)
             .toolbarColorScheme(
-                terminal.themes.selection(for: colorScheme)
-                    .chromeColorScheme(for: colorScheme),
+                terminal.themes.selection(for: themeAppearance)
+                    .chromeColorScheme(for: themeAppearance),
                 for: .navigationBar
             )
             .navigationBarBackButtonHidden(true)
@@ -605,7 +605,7 @@ struct ShellTerminalView: View {
     }
 
     private var themePalette: TerminalThemePalette {
-        terminal.themes.selection(for: colorScheme).palette(for: colorScheme)
+        terminal.themes.selection(for: themeAppearance).palette(for: themeAppearance)
     }
 
     @ViewBuilder
@@ -733,8 +733,7 @@ struct ShellTerminalMoreMenu: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(
-                "This closes the pane on the Host, ending anything running in it. "
-                    + "Going Back instead leaves it for desktop handoff.")
+                String(localized: "This closes the pane on the Host, ending anything running in it. Going Back instead leaves it for desktop handoff."))
         }
     }
 }
@@ -828,7 +827,7 @@ struct ShellTerminalInputRow: View {
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isShortcutRowEnabled ? "Hide shortcut row" : "Show shortcut row")
+        .accessibilityLabel(isShortcutRowEnabled ? String(localized: "Hide shortcut row") : String(localized: "Show shortcut row"))
         .accessibilityHint("Puts Esc, Tab and arrow keys above the input row")
     }
 
@@ -850,7 +849,7 @@ struct ShellTerminalInputRow: View {
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(isKeyboardUp ? "Dismiss keyboard" : "Show keyboard")
+        .accessibilityLabel(isKeyboardUp ? String(localized: "Dismiss keyboard") : String(localized: "Show keyboard"))
     }
 }
 

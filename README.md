@@ -18,13 +18,13 @@
 
 <a href="https://trendshift.io/repositories/151670?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-151670" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/151670" alt="ZingerLittleBee%2FHeeler | Trendshift" width="250" height="55"/></a>
 
-English | [简体中文](./README-zh.md) | [日本語](./README-ja.md)
+English | [简体中文](./README-zh.md) | [繁體中文](./README-zh-TW.md) | [日本語](./README-ja.md)
 
 </div>
 
 ---
 
-Heeler is an independent **herdr mobile client** and agent console for Claude Code, Codex, and other coding Agents on iPhone and iPad. Agents run on your own Hosts with herdr; Heeler connects over SSH. Monitor multiple Agents across machines, sorted by who needs you, then open a live terminal or supported Chat conversation to send instructions.
+Heeler is an independent **herdr mobile client** and agent console for Claude Code, Codex, and other coding Agents on iPhone and iPad. Agents run on your own Hosts in Herdr TUI or the Herdr desktop app (herdr-core); Heeler connects over SSH. Monitor multiple Agents across machines, sorted by who needs you, then open a live terminal or supported Chat conversation to send instructions.
 
 ## Screenshots
 
@@ -52,6 +52,11 @@ Heeler is an independent **herdr mobile client** and agent console for Claude Co
 
 - **Console** — every Agent on every machine in one status-sorted list
   (Blocked first), filterable by Host, updated live.
+- **Herdr desktop and herdr-core** — connect to the Herdr desktop app or
+  headless herdr-core on macOS, Linux, and native Windows. The Console
+  follows the desktop app's spaces and tabs, and live terminals, Chat, the
+  Composer, New Agent, and New Workspace work there too
+  ([Read more](https://docs.heeler.bybee.dev/herdr-core)).
 - **Attach** — the Agent's real terminal rendered by libghostty: native
   scrollback, momentum touch scrolling that also drives full-screen TUIs,
   long-press selection, takeover of a stale terminal owner, and quietly
@@ -81,9 +86,9 @@ Heeler is an independent **herdr mobile client** and agent console for Claude Co
   or one; Home Screen and Lock Screen widgets keep them in view
   ([Read more](https://docs.heeler.bybee.dev/usage)).
 - **Worktrees** — start an Agent on a clean checkout of the workspace's repo.
-- **Appearance** — System, Light, or Dark; 30 terminal themes with separate
-  Light and Dark slots; bundled JetBrains Mono and IBM Plex Mono; pinch to
-  zoom.
+- **Appearance** — System, Light, or Dark; 30 themes with separate Light and
+  Dark slots, worn by terminals, Chat and the app; bundled JetBrains Mono and
+  IBM Plex Mono; pinch to zoom.
 - **Jump Host** — reach unroutable machines through an SSH jump, with keys
   verified at both hops.
 
@@ -100,6 +105,8 @@ socket open even when forwarding is allowed — see [SELinux on a Fedora or RHEL
 Host](docs/guides/selinux.md).
 
 Native Windows Hosts (herdr >= 0.9.3) connect over SSH and are added manually.
+
+herdr-core Hosts, including machines running the Herdr desktop app, are added manually with their Server Kind confirmed. Heeler carries one framed link to the core: a direct-streamlocal channel onto its socket on macOS and Linux, or `herdr-core connect` over SSH exec on native Windows. Connecting never starts a core on macOS or Linux. The optional Host Helper adds notifications, Live Activities, and Usage on macOS and Linux ([Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core)).
 
 For Tailscale, ZeroTier, or EasyTier access, follow the [Overlay Network setup guides](docs/guides/overlay-networks.md). They cover macOS installation, Tailscale without a VPN on the Mac, Heeler configuration, and connection checks. Heeler joins these networks inside the app without an iOS VPN configuration; you need a Heeler version with **Settings > Overlay Networks**.
 
@@ -120,6 +127,10 @@ or [TestFlight](https://testflight.apple.com/join/aXSxRn4r).
 - **macOS / Linux:** Install [herdr](https://herdr.dev/docs/install/), enable SSH,
   then follow the pairing steps below.
 - **Native Windows:** Follow the [Windows setup guide](docs/guides/windows-setup.md).
+- **Herdr desktop app / herdr-core:** Start the desktop app or herdr-core,
+  enable SSH, then add the Host manually:
+  [Connect herdr-core](https://docs.heeler.bybee.dev/herdr-core). Needs
+  Heeler 0.1.18 or later.
 
 ## Adding a machine
 
