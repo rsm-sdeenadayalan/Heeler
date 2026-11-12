@@ -308,11 +308,20 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
   checks the compiled tables of every language; `xcodebuild -testLanguage <language>`
   runs a suite under a translation. Settings › Language opens iOS Settings,
   where iOS keeps the app's language.
+- **Dropped frames and main-thread stalls:** [PerfTrace](../../Sources/Heeler/Support/PerfTrace.swift)
+  is the opt-in frame clock (`--perf-trace`), with spans and counts in the
+  Console's rebuild and list and in Chat's store, timeline and cells;
+  [PerfMainThreadSampler](../../Sources/Heeler/Support/PerfMainThreadSampler.swift)
+  takes the main thread's stack while a frame is overdue, and
+  [perf-trace-summary.py](../../scripts/perf-trace-summary.py) reads the file.
+  [performance-tracing.md](performance-tracing.md) is the runbook. Coverage:
+  [PerfTraceTests](../../Tests/HeelerTests/PerfTraceTests.swift).
 
 ## Sibling deliverables and generated files
 
 | Area | Entry and verification |
 | --- | --- |
+| Ad Hoc installation | `make adhoc`, `make adhoc-publish` ([packaging](../../scripts/adhoc.py), [publisher](../../scripts/adhoc-publish.py)); [Cloud hook](../../ci_scripts/ci_post_xcodebuild.sh) and [download Worker](../../adhoc-host/src/worker.mjs); [guide](../guides/adhoc-install.md), `make test-adhoc` (also in `make test-tools`) |
 | herdr plugin | [plugin/README.md](../../plugin/README.md), `plugin/herdr-plugin.toml`, `npm test` in `plugin/`; `make plugin` ([publish-plugin.sh](../../scripts/publish-plugin.sh), `bash scripts/test-publish-plugin.sh`) publishes it to the `plugin` branch ([ADR 0026](../adr/0026-plugin-distribution-branch.md)). `plugin/src/delivery/` is shared with the Host Helper ([ADR 0033](../adr/0033-herdr-core-hosts-run-a-heeler-host-helper.md)), so it imports only relative paths and Node built-ins and reads no `HERDR_*` variable; `plugin/helper/` stays off the branch. Helper code imports plugin code only as `./shared/<path>`, which `node scripts/generate-host-helper-manifest.mjs` copies from `plugin/src/<path>` before it writes the checked `manifest.json` (`plugin/test/helper-closure.test.js`, `scripts/test-host-helper-manifest.py`); any Helper change also bumps `plugin/helper/version.json`, `plugin/test-vectors/host-helper-version-v1.json` and `HostHelperCompatibility.bundled` |
 | Push Relay | [relay/README.md](../../relay/README.md), `npm test` in `relay/` |
 | Marketing site | [landing](../../landing), its `package.json` scripts, [landing CI](../../.github/workflows/landing.yml) |
