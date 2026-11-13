@@ -9,6 +9,7 @@ Entries reference the pull request that made the change.
 
 ### Added
 
+- Rename an Antigravity CLI conversation from its More menu or the Agents list's long-press menu on Herdr TUI Hosts. Save sends `/rename <title>` and confirms the rename from Antigravity CLI's screen reply or updated terminal title; automatic title generation stays disabled because `/rename` with no title is not supported by Antigravity CLI. (PR #723)
 - Fill a password into a Shell Terminal with iOS Password AutoFill. When the last line on screen asks for one, such as `[sudo] password for zeng:` or an SSH key's passphrase, a Fill Password button floats over the terminal, and Enter Password… in the More menu opens the same secure field at any time. Its eye button shows the password while you check it. The password is typed in without Return, so you submit it yourself; it does not go through the clipboard and Heeler does not keep it. (#703)
 - Open an image whose path an Agent writes on a line of its own in a code block, by tapping the line or with Preview Image in the message's menu, as a path written as inline code already opens. The line shows in the tint color without a photo symbol, so the block's lines stay aligned; code that only mentions an image, such as `cp a.png b.png`, stays as it is. (PR #710)
 - Chat shows Antigravity CLI conversations on macOS and Linux Herdr TUI
@@ -19,15 +20,18 @@ Entries reference the pull request that made the change.
   Chat or the terminal, and answers its command, file edit and file
   creation permissions, its questions (several at once, multi-select or
   written) and its trust prompt from cards. It holds a
-  message, with the reason, while Antigravity CLI is working or its screen
-  shows no empty input box, since a permission dialog that opened as the
-  message went in would take it as its answer. macOS and Linux herdr-core
+  message, with the reason, while Antigravity CLI's screen
+  shows no empty input box, since a permission dialog on screen would
+  take it as its answer. macOS and Linux herdr-core
   Hosts offer it too, following the conversation from its first message,
   sent from Chat or the terminal. Windows herdr-core Hosts don't offer it.
   (PR #705)
 
 ### Changed
 
+- Send a Chat message to Antigravity CLI while a turn is running whenever its terminal shows an empty input box, so Antigravity CLI queues the message for the turn instead of holding it until Idle; dialogs, drafts, bash mode and open panels still hold with the reason. (PR #725)
+- Keep the Console's Host filter across app launches alongside its Status filter, and shorten Antigravity CLI's Waiting for Conversation message in Chat to match Codex's. (PR #724)
+- Draw Chat's tool groups and tool calls as single-line rows like its reasoning rows, with a vertical guide line beside the calls inside an open group, instead of full-width cards; a tool call's output still opens in a raised box below its line. (PR #722)
 - Put More at the left end of a Shell Terminal's input row, before a smaller paste button that is a bare glyph like the row's others. (#703)
 - Mark a Chat message Queued, with a clock, only while the Agent's program holds it undelivered, as Claude Code and OpenCode record. Once delivered, it reads like any other message inside the turn it reached, instead of keeping Sent while working for good. (PR #711)
 - See Chat, its diffs and the app around it in the terminal theme of the mode in force. Heeler is drawn light or dark as that theme is, so a dark theme for Light Mode darkens the whole app, sheets included; the Composer, its Agent strip and the sidebar's cards become neutral veils over the theme. Settings > Appearance gathers Mode and the Light Mode and Dark Mode themes in a Theme section of their own, and Light Mode now defaults to Default. (PR #679)
@@ -48,6 +52,8 @@ Entries reference the pull request that made the change.
 
 ### Fixed
 
+- Keep an Antigravity CLI Chat on the main conversation while Antigravity CLI runs subagents. On Herdr TUI Hosts each subagent step reported the subagent's own session id, so Chat switched to the subagent's steps instead of the conversation shown in the terminal. (PR #721)
+- Scroll the Agents list without stutter while an offline or slow Host retries in the background. Each connection attempt had re-evaluated the Console's tabs and every visible Agent row across Hosts, built lifted card previews upfront, and read credentials and Notification Keys from the Keychain on the main thread. Now other Hosts' rows stay untouched, row menus build only when opened, and Keychain reads stay off the main thread. (PR #717)
 - Scroll the Agents list, and read or type in a Chat, without stutter while Agents change status or a Chat streams. Each status change had rebuilt the whole Console, every row of the list and the open Chat with it. Now only the rows that change are rebuilt, and an open Chat is left alone by other Agents' changes. (PR #715)
 - Open a long Chat with less of a pause. It built about twenty messages, most of them long answers above the screen, where it now builds the few that show. (PR #715)
 - Pull down in Chat for earlier messages and have the list bounce back when you let go, rather than snap to the top. Earlier messages that arrive while you still hold the pull no longer move what is under your finger, and arrive with a shorter pause. (PR #715)
