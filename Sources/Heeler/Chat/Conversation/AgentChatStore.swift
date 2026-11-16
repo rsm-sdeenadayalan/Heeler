@@ -422,6 +422,12 @@ final class AgentChatStore {
     /// offset within one layout of the file. The value is when the send
     /// that took it was delivered.
     @ObservationIgnored private var claimedPrompts: [String: Date] = [:]
+    /// Image paths carried by sends that claimed prompts in the current
+    /// conversation, keyed by the same claim key as ``claimedPrompts``.
+    @ObservationIgnored private var claimedPromptImages: [String: [String]] = [:]
+    /// Monotonic bump when ``claimedPromptImages`` enriches transcript entries
+    /// without a new engine snapshot.
+    @ObservationIgnored private var claimedImageRevision = 0
     @ObservationIgnored private var claimedGeneration = 0
     @ObservationIgnored private var claimedLayout = 0
     @ObservationIgnored private var skillNames: Set<String> = []
@@ -435,6 +441,8 @@ final class AgentChatStore {
     @ObservationIgnored private var outputReads: [ChatEntryID: Task<Void, Never>] = [:]
     /// What each listed Workflow's journal showed, by the Workflow's id.
     @ObservationIgnored private var workflowProgress: [String: ChatWorkflowProgress] = [:]
+    /// Live SFTP end-of-run evidence for Claude Code Workflows.
+    @ObservationIgnored private var claudeWorkflowEvidence: [String: ChatBackgroundWorkEvidence] = [:]
     /// Live SFTP and screen evidence for Antigravity CLI Background Work.
     @ObservationIgnored private var agyFileEvidence: [String: ChatBackgroundWorkEvidence] = [:]
     @ObservationIgnored private var agyScreenEvidence: [String: ChatBackgroundWorkEvidence] = [:]
@@ -1087,10 +1095,18 @@ final class AgentChatStore {
         if polled, case .following = snapshot.phase, snapshot.readFailure == nil {
             let progress = await engine.followWorkflows()
             if engine === self.engine { workflowProgress = progress }
+            if program == .claude {
+                let workflowEnds = await engine.followClaudeWorkflowEnds()
+                if engine === self.engine {
+                    claudeWorkflowEvidence = stampingEndPromptOffsets(workflowEnds, previous: claudeWorkflowEvidence)
+                }
+            }
         }
         if program == .agy, polled || opened, case .following = snapshot.phase, snapshot.readFailure == nil {
             let fileEvidence = await engine.followAgyBackgroundWork()
-            if engine === self.engine { agyFileEvidence = fileEvidence }
+            if engine === self.engine {
+                agyFileEvidence = stampingEndPromptOffsets(fileEvidence, previous: agyFileEvidence)
+            }
         }
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
         await checkAgyBackgroundWorkScreen(from: engine)
@@ -1656,6 +1672,7 @@ final class AgentChatStore {
         engine = target.map(makeEngine)
         restored = false
         appliedRevision = nil
+        claimedImageRevision = 0
         olderRequest = nil
         pollsBeforeNextOlderPage = false
         needsRelocate = false
@@ -1666,6 +1683,7 @@ final class AgentChatStore {
         outputs = ChatToolOutputs()
         waitingOutputs = []
         workflowProgress = [:]
+        claudeWorkflowEvidence = [:]
         agyFileEvidence = [:]
         agyScreenEvidence = [:]
         needsAgyScreenCheck = true
@@ -2104,13 +2122,15 @@ final class AgentChatStore {
         else { return }
         let span = PerfTrace.begin("chat.store.apply")
         defer { PerfTrace.end(span) }
-        if snapshot.transcript.entries != conversation.transcript.entries { lastActivity = now() }
         appliedRevision = snapshot.revision
         transcriptReadFailure = snapshot.readFailure
         var next = snapshot
+        next.revision &+= claimedImageRevision
+        _ = applyClaimedPromptImages(to: &next.transcript, layoutGeneration: next.layoutGeneration)
         next.readFailure = transcriptReadFailure ?? agentRefreshFailure
         if isAwaitingSession { next.phase = .unavailable(awaitingReason) }
         if olderRequest != nil, next.older == .available { next.older = .loading }
+        if next.transcript.entries != conversation.transcript.entries { lastActivity = now() }
         conversation = next
         // A prompt the transcript recorded since: the terminal is back in
         // this conversation.
@@ -2169,20 +2189,45 @@ final class AgentChatStore {
             hasReadLive
             ? ChatBackgroundWork(
                 transcript: conversation.transcript, progress: workflowProgress,
-                evidence: mergedAgyBackgroundWorkEvidence(), isLive: isLive, now: now(),
+                evidence: mergedBackgroundWorkEvidence(), isLive: isLive, now: now(),
                 staleness: timing.backgroundWorkStaleness)
             : ChatBackgroundWork()
         if next != backgroundWork { backgroundWork = next }
         notifyRunningBackgroundWorkIfNeeded()
     }
 
-    private func mergedAgyBackgroundWorkEvidence() -> [String: ChatBackgroundWorkEvidence] {
-        guard program == .agy else { return [:] }
-        var merged = agyFileEvidence
-        for (id, screen) in agyScreenEvidence {
-            merged[id] = merged[id]?.merging(screen) ?? screen
+    private func mergedBackgroundWorkEvidence() -> [String: ChatBackgroundWorkEvidence] {
+        switch program {
+        case .claude:
+            return claudeWorkflowEvidence
+        case .agy:
+            var merged = agyFileEvidence
+            for (id, screen) in agyScreenEvidence {
+                merged[id] = merged[id]?.merging(screen) ?? screen
+            }
+            return merged
+        default:
+            return [:]
         }
-        return merged
+    }
+
+    private func stampingEndPromptOffsets(
+        _ incoming: [String: ChatBackgroundWorkEvidence],
+        previous: [String: ChatBackgroundWorkEvidence]
+    ) -> [String: ChatBackgroundWorkEvidence] {
+        let prompt = conversation.transcript.latestPromptOffset ?? 0
+        var stamped: [String: ChatBackgroundWorkEvidence] = [:]
+        for (id, var entry) in incoming {
+            if entry.endedState != nil {
+                if let prior = previous[id], prior.endedState != nil, prior.endedAt == entry.endedAt {
+                    entry.endPromptOffset = prior.endPromptOffset ?? prompt
+                } else {
+                    entry.endPromptOffset = prompt
+                }
+            }
+            stamped[id] = entry
+        }
+        return stamped
     }
 
     /// Reads the Antigravity CLI pane's screen when needed to confirm silent
@@ -2214,10 +2259,11 @@ final class AgentChatStore {
             {
                 agyScreenEvidence[id]?.endedState = nil
                 agyScreenEvidence[id]?.endedAt = nil
+                agyScreenEvidence[id]?.endPromptOffset = nil
             }
         }
 
-        let mergedBefore = mergedAgyBackgroundWorkEvidence()
+        let mergedBefore = mergedBackgroundWorkEvidence()
         let unresolved = listedItems.filter { item in
             guard item.state == .running,
                 item.id.hasPrefix("agy:task:") || item.id.hasPrefix("agy:subagent:")
@@ -2301,12 +2347,16 @@ final class AgentChatStore {
             freshEvidence = agy.backgroundWorkEvidence(for: stillRunning, at: checkDate)
         }
 
+        let promptOffset = conversation.transcript.latestPromptOffset ?? 0
         for (id, observed) in freshEvidence {
             var current = agyScreenEvidence[id] ?? ChatBackgroundWorkEvidence()
             if let seenAt = observed.lastSeenAt {
                 current.lastSeenAt = [current.lastSeenAt, seenAt].compactMap(\.self).max()
             }
             if let endedState = observed.endedState {
+                if current.endedState == nil || current.endedAt != observed.endedAt {
+                    current.endPromptOffset = promptOffset
+                }
                 current.endedState = endedState
                 current.endedAt = observed.endedAt
             }
@@ -2403,6 +2453,7 @@ final class AgentChatStore {
             claimedGeneration = conversationGeneration
             claimedLayout = layout
             claimedPrompts = [:]
+            claimedPromptImages = [:]
         }
         struct Candidate {
             let claim: String
@@ -2418,7 +2469,8 @@ final class AgentChatStore {
             candidate(offset: prompt.offset, entryID: prompt.entryID).map {
                 (
                     candidate: $0, key: source.adapter.echoKey(prompt.text), text: String(Self.squeezed(prompt.text)),
-                    imagePaths: prompt.pastedImagePaths
+                    rawText: prompt.text, imagePaths: prompt.pastedImagePaths,
+                    hasUnresolvedImagePlaceholders: prompt.hasUnresolvedImagePlaceholders
                 )
             }
         }
@@ -2469,6 +2521,7 @@ final class AgentChatStore {
                     isAfter(prompt.candidate) && claimedPrompts[prompt.candidate.claim].map { $0 > deliveredAt } ?? true
                 }
             }
+            var matchedImagePaths: [String] = []
             var match = recorded.first { $0.key == send.key && isOpen($0.candidate) }?.candidate
             // A compaction recorded after a prompt recorded since the send
             // is a later `/compact`'s, however long this one stays in the
@@ -2486,13 +2539,29 @@ final class AgentChatStore {
                     guard let paths = prompt.imagePaths, isOpen(prompt.candidate) else { return false }
                     return paths.isEmpty || paths.contains(path)
                 }?.candidate
+                if match != nil, ChatImagePath.hasImageExtension(path) {
+                    matchedImagePaths = [path]
+                }
             }
             // The program may move image paths on lines of their own ahead
             // of the text and drop the line breaks after them
-            // (`[Image #1]what…`), so the restored record differs from the send.
+            // (`[Image #1]what…`), so the restored record differs from the
+            // send; while queued or absorbed mid-turn without source notes,
+            // the record still holds `[Image #N]` placeholders.
             if match == nil, let text = source.adapter.pastedImageEcho(send.text) {
                 let key = source.adapter.echoKey(text)
-                match = recorded.first { $0.key == key && isOpen($0.candidate) }?.candidate
+                let paths = source.adapter.pastedImagePaths(send.text)
+                match = recorded.first { prompt in
+                    guard isOpen(prompt.candidate) else { return false }
+                    if prompt.key == key { return true }
+                    guard prompt.hasUnresolvedImagePlaceholders, !paths.isEmpty else { return false }
+                    let substituted = ChatRecordedPrompt.replacingImagePlaceholders(
+                        in: prompt.rawText, with: paths)
+                    return substituted != prompt.rawText && source.adapter.echoKey(substituted) == key
+                }?.candidate
+                if match != nil {
+                    matchedImagePaths = paths
+                }
             }
             if match == nil, extendedSends.contains(send.id) {
                 let text = String(Self.squeezed(send.text))
@@ -2500,6 +2569,9 @@ final class AgentChatStore {
             }
             if let match {
                 claimedPrompts[match.claim] = deliveredAt
+                if !matchedImagePaths.isEmpty {
+                    claimedPromptImages[match.claim] = matchedImagePaths
+                }
                 statuses[send.id] = .recorded
             } else if misdirectedSends.contains(send.id) {
                 statuses[send.id] =
@@ -2532,6 +2604,10 @@ final class AgentChatStore {
             }
         }
         if statuses != sendStatuses { sendStatuses = statuses }
+        if applyClaimedPromptImages(to: &conversation.transcript, layoutGeneration: layout) {
+            claimedImageRevision &+= 1
+            conversation.revision &+= 1
+        }
         // The send that raised the concern was recorded here after all.
         if let concern = sessionConcern, statuses[concern.raisedBy] == .recorded { sessionConcern = nil }
         // Only an awaiting send's clock still decides anything, so spells
@@ -2547,6 +2623,46 @@ final class AgentChatStore {
             needsRelocate = true
             wake()
         }
+    }
+
+    /// Fills in pasted image paths on bubbles whose transcript records do not
+    /// name them yet (a Claude Code `enqueue` while queued, or a mid-turn
+    /// `queued_command` attachment). Returns whether any entry changed.
+    private func applyClaimedPromptImages(to transcript: inout ChatTranscript, layoutGeneration: Int) -> Bool {
+        guard !claimedPromptImages.isEmpty,
+            claimedGeneration == conversationGeneration,
+            source.adapter.echoesByEntry || claimedLayout == layoutGeneration
+        else { return false }
+
+        let byEntry = source.adapter.echoesByEntry
+        var pathsByEntry: [ChatEntryID: [String]] = [:]
+        for prompt in transcript.recordedPrompts {
+            guard let entryID = prompt.entryID else { continue }
+            let claim = byEntry ? entryID.rawValue : "@\(prompt.offset)"
+            if let paths = claimedPromptImages[claim], !paths.isEmpty {
+                pathsByEntry[entryID] = paths
+            }
+        }
+        guard !pathsByEntry.isEmpty else { return false }
+
+        var changed = false
+        for index in transcript.entries.indices {
+            let entryID = transcript.entries[index].id
+            guard let paths = pathsByEntry[entryID],
+                case .user(var message) = transcript.entries[index].content,
+                message.imagePaths.isEmpty
+            else { continue }
+            let sourceText = message.command?.arguments ?? message.text
+            let placeholderCount = sourceText.matches(of: #/\[Image #[0-9]+\]/#).count
+            guard placeholderCount == paths.count else { continue }
+            message.imagePaths = paths
+            if message.imageCount < paths.count {
+                message.imageCount = paths.count
+            }
+            transcript.entries[index].content = .user(message)
+            changed = true
+        }
+        return changed
     }
 
     /// Opens a busy spell when herdr reports the Agent Working or Blocked,
