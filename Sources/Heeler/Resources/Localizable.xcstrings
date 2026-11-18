@@ -6263,6 +6263,7 @@
         }
       }
     },
+    "A message was too large for the connection to Rex. If this keeps happening, check the Rex version on the Host." : {},
     "A moon is not valid. Fix it in Advanced." : {
       "localizations" : {
         "ja" : {
@@ -6683,6 +6684,7 @@
         }
       }
     },
+    "Accounts are kept on Hosts with a herdr or tmux Server. Rex Servers keep none." : {},
     "Accounts are not available on this Host." : {
       "localizations" : {
         "ja" : {
@@ -7810,6 +7812,7 @@
         }
       }
     },
+    "Add to This Folder" : {},
     "Add worker @%@" : {
       "localizations" : {
         "ja" : {
@@ -10328,6 +10331,7 @@
         }
       }
     },
+    "Asks the Host again to resize the terminal to fit this screen." : {},
     "Assign one to this device in the EasyTier console." : {
       "localizations" : {
         "ja" : {
@@ -13028,6 +13032,8 @@
         }
       }
     },
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. %@ names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again." : {},
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. %@ names it through Heeler's extension, which goes in its extension folder on this Host. Add it here, then start the Agent again. Without it, Chat follows the conversation after its first message." : {},
     "Chat can't tell which conversation this Agent is in, and doesn't guess. %@ names it through Heeler's extension, which goes in its extension folder on this Host. If it isn't there yet, add it here, then start the Agent again." : {
       "localizations" : {
         "ja" : {
@@ -13118,6 +13124,8 @@
         }
       }
     },
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is in its extension folder, but this %@ hasn't loaded it: it started before the extension was added, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on." : {},
+    "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is in its extension folder, but this %@ hasn't loaded it: it started before the extension was added, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on. Without it, Chat follows the conversation after its first message." : {},
     "Chat can't tell which conversation this Agent is in, and doesn't guess. Heeler's extension, which names the conversation, is installed, but this %@ hasn't loaded it: it started before the Helper was installed, or with its extensions turned off (--no-extensions). Start the Agent again with its extensions on." : {
       "comment" : "Chat explanation; %@ is Pi or Oh My Pi",
       "localizations" : {
@@ -13517,6 +13525,7 @@
         }
       }
     },
+    "Check the Rex version on the Host." : {},
     "Check the file's permissions on the Host." : {
       "localizations" : {
         "ja" : {
@@ -14582,6 +14591,7 @@
         }
       }
     },
+    "Clear its scrollback, then reattach." : {},
     "Clear text" : {
       "comment" : "Accessibility label for the button that clears the rename text field.",
       "localizations" : {
@@ -15410,6 +15420,7 @@
         }
       }
     },
+    "Codex reports this conversation open in another app. Close it there, then press R in the terminal. If no other app has it, Codex's shared server may hold it: codex app‑server daemon stop frees it, ending any other Codex on that server." : {},
     "Codex runs on its shared background server here, where one terminal's conversation looks like another's. Exit Codex, run codex resume %@, and pick the conversation in Codex's list. %@" : {
       "localizations" : {
         "ja" : {
@@ -16108,6 +16119,7 @@
       }
     },
     "Connect" : {},
+    "Connect as the account that runs Rex." : {},
     "Connect directly to the Host that owns this herdr-core Terminal" : {
       "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
       "localizations" : {
@@ -18520,6 +18532,7 @@
         }
       }
     },
+    "Couldn't fit to this screen" : {},
     "Couldn't load output: %@" : {
       "localizations" : {
         "ja" : {
@@ -20038,6 +20051,7 @@
         }
       }
     },
+    "Detached" : {},
     "Detached HEAD" : {
       "localizations" : {
         "ja" : {
@@ -22794,6 +22808,28 @@
         }
       }
     },
+    "Every server on %@ uses the first route that reaches it. Heeler moves to a direct route when one comes into reach." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上のすべてのサーバーは、最初にホストへ到達した経路を使用します。直接の経路に到達できるようになると、Heeler はその経路に切り替えます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的所有服务器都使用最先连上主机的那条线路。有直连线路可达时，Heeler 会切换过去。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的所有伺服器都使用第一個能連到主機的路由。有直接連線的路由可用時，Heeler 會切換過去。"
+          }
+        }
+      }
+    },
     "Exit %lld" : {
       "localizations" : {
         "ja" : {
@@ -23063,6 +23099,7 @@
         }
       }
     },
+    "Expect this Agent's program to load what is in this folder for every session on this Host. In a Rex terminal the extension keeps which conversation a session is in, in a small file of its own under heeler-session beside this folder, and Chat reads it there." : {},
     "Expired" : {
       "localizations" : {
         "ja" : {
@@ -24050,6 +24087,8 @@
         }
       }
     },
+    "Fit to Screen" : {},
+    "Fitting to this screen…" : {},
     "Fix it in Settings › Overlay Networks." : {
       "localizations" : {
         "ja" : {
@@ -26655,6 +26694,7 @@
         }
       }
     },
+    "Heeler could not look for Rex on this Host" : {},
     "Heeler could not reach this Host's systemd user manager to ask about the service. %@" : {
       "localizations" : {
         "ja" : {
@@ -26743,6 +26783,7 @@
         }
       }
     },
+    "Heeler could not read whether Rex is on this Host." : {},
     "Heeler could not save this Host’s Accounts. Try again." : {
       "localizations" : {
         "ja" : {
@@ -26765,6 +26806,7 @@
         }
       }
     },
+    "Heeler could not write the request to Rex." : {},
     "Heeler couldn't add the extension. Nothing more was written." : {
       "localizations" : {
         "ja" : {
@@ -27565,6 +27607,7 @@
         }
       }
     },
+    "Heeler finds Rex on macOS and Linux Hosts only." : {},
     "Heeler hasn't found this conversation's transcript yet." : {
       "localizations" : {
         "ja" : {
@@ -27919,7 +27962,7 @@
         }
       }
     },
-    "Heeler shows the Agents of every server that is on. Servers it finds later arrive switched off." : {},
+    "Heeler shows the Agents, Terminals and notifications of every server that is on. Switching one off changes nothing on %@. Servers it finds later arrive switched off." : {},
     "Heeler signed this device out and forgot its login, but could not reach the coordination server (%@). Remove the device in the tailnet's admin console if it is still listed." : {
       "localizations" : {
         "ja" : {
@@ -28031,50 +28074,57 @@
         }
       }
     },
-    "Heeler tries every route each time it connects and keeps the first that reaches the Host." : {
+    "Heeler tried all %lld routes and none reached %@. Check that it is awake and on a network this device can reach." : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heeler tried all %1$lld routes and none reached %2$@. Check that it is awake and on a network this device can reach."
+          }
+        },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler は接続のたびにすべての経路を試み、ホストに到達した最初のものを採用します。"
+            "value" : "Heeler は %1$lld 本の経路をすべて試しましたが、%2$@ には到達できませんでした。起動中であること、このデバイスから到達できるネットワーク上にあることを確認してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 每次连接时都会尝试所有线路，并使用最先连上主机的线路。"
+            "value" : "Heeler 尝试了全部 %1$lld 条线路，都无法连接到 %2$@。请确认它已唤醒，并且所在的网络可从此设备访问。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 每次連線時都會嘗試所有路由，並保留第一個能連到主機的路由。"
+            "value" : "Heeler 嘗試了全部 %1$lld 條路由，都無法連到 %2$@。請確認它處於喚醒狀態，且所在的網路可從此裝置連上。"
           }
         }
       }
     },
-    "Heeler tries every route each time it connects and keeps the first that reaches the Host. Routes over this device's own network start first; the rest start a moment later." : {
+    "Heeler tries every route when it connects, and every server on the Host uses the first that reaches it. Routes over this device's own network start first, and Heeler moves to one of them when it comes into reach." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler は接続のたびにすべての経路を試み、ホストに到達した最初のものを維持します。このデバイス自身のネットワークを使う経路が最初に開始し、残りは少し後に開始します。"
+            "value" : "Heeler は接続時にすべての経路を試み、ホスト上のすべてのサーバーが最初に到達した経路を使用します。このデバイス自身のネットワークを使う経路が最初に開始し、後からそのような経路に到達できるようになると、Heeler はそちらに切り替えます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 每次连接时都会尝试所有线路，并使用最先连上主机的线路。使用此设备自身网络的线路会最先开始尝试，其余线路稍后开始。"
+            "value" : "Heeler 连接时会尝试所有线路，主机上的所有服务器都使用最先连上的那条。使用此设备自身网络的线路会最先开始尝试；之后这类线路一旦可达，Heeler 会切换过去。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heeler 每次連線時都會嘗試所有路由，並保留第一個能連到主機的路由。經由此裝置自身網路的路由會先啟動，其餘的稍後啟動。"
+            "value" : "Heeler 連線時會嘗試所有路由，主機上的所有伺服器都使用第一個能連上的路由。經由此裝置自身網路的路由會先啟動；之後這類路由一旦可用，Heeler 會切換過去。"
           }
         }
       }
     },
+    "Heeler's extension for this Agent" : {},
     "Heeler's extension in %@" : {
       "comment" : "Feature unavailable when Heeler's extension could not be written. %@ is the folder.",
       "localizations" : {
@@ -30225,6 +30275,7 @@
         }
       }
     },
+    "Install Rex and start it, then check again." : {},
     "Install Tailscale on your Mac and sign in with the same account. It appears here, ready to add as a Host." : {
       "localizations" : {
         "ja" : {
@@ -31187,6 +31238,7 @@
         }
       }
     },
+    "Keeps the size the other device set." : {},
     "Kept in this device's Keychain and sent only with recordings to %@." : {
       "localizations" : {
         "ja" : {
@@ -35334,6 +35386,7 @@
         }
       }
     },
+    "No Rex server socket was found" : {},
     "No Skills" : {
       "localizations" : {
         "ja" : {
@@ -37572,6 +37625,7 @@
         }
       }
     },
+    "Nothing was typed" : {},
     "Nothing was written." : {
       "localizations" : {
         "ja" : {
@@ -37905,7 +37959,6 @@
         }
       }
     },
-    "Off removes its Agents, Terminals and notifications from this device. Whatever runs on %@ keeps running." : {},
     "Offline" : {
       "localizations" : {
         "ja" : {
@@ -44120,6 +44173,7 @@
         }
       }
     },
+    "Reattach to open it again." : {},
     "Recent Chat messages stay on this device for up to 30 days, within 300 MB. Removing a Host deletes its messages." : {
       "localizations" : {
         "ja" : {
@@ -46166,6 +46220,7 @@
         }
       }
     },
+    "Resizes the terminal to fit this screen. Other devices show it at this size until you leave it." : {},
     "Resolving the Host's home directory timed out." : {
       "localizations" : {
         "ja" : {
@@ -46633,6 +46688,36 @@
         }
       }
     },
+    "Rex Hosts" : {},
+    "Rex and Heeler did not agree on the connection's protocol. If this keeps happening, check the Rex version on the Host." : {},
+    "Rex did not finish opening the connection." : {},
+    "Rex did not let this account in" : {},
+    "Rex did not offer API revision %lld, the only one this build of Heeler works with" : {},
+    "Rex dropped the connection because too many events were waiting for Heeler." : {},
+    "Rex installed" : {},
+    "Rex is not answering" : {},
+    "Rex is not running" : {},
+    "Rex is running, but SSH will not open %@" : {},
+    "Rex offers API revision %lld, and this build of Heeler works with revision %lld only" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Rex offers API revision %1$lld, and this build of Heeler works with revision %2$lld only"
+          }
+        }
+      }
+    },
+    "Rex refused the connection with HTTP status %lld." : {},
+    "Rex rejected the request" : {},
+    "Rex sent an answer Heeler cannot read" : {},
+    "Rex server running" : {},
+    "Rex stopped sending this terminal's output" : {},
+    "Rex was not found on this Host" : {},
+    "Rex's answer could not be read." : {},
+    "Rex's session list could not be read." : {},
+    "Rex's status named no server instance." : {},
+    "Rex's terminal modes could not be read." : {},
     "Right Arrow" : {
       "localizations" : {
         "ja" : {
@@ -46993,25 +47078,48 @@
         }
       }
     },
-    "Row 1 starts from the terminal's title and Row 2 from its directory. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
+    "Row 1 starts from the terminal's title and Host, and Row 2 from the Workspace and Changes. Any row can use these fields and your Terminals' labels. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
       "comment" : "Agent List Fields footer when the Host has no herdr plugin",
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "行 1 はターミナルのタイトルから、行 2 はそのディレクトリから始まります。どの行もこれらのフィールドとターミナルのラベルを使えます。行の右側のフィールドはその行の末尾に置かれます。各エージェントのマークを囲むリングがステータスを示し、status_badge はそれをカプセルで表示します。マークがプログラムを示す場合、他のフィールドがある行から Agent フィールドは外れます。"
+            "value" : "行 1 はターミナルのタイトルと Host から、行 2 は Workspace と変更数から始まります。どの行もこれらのフィールドとターミナルのラベルを使えます。行の右側のフィールドはその行の末尾に置かれます。各エージェントのマークを囲むリングがステータスを示し、status_badge はそれをカプセルで表示します。マークがプログラムを示す場合、他のフィールドがある行から Agent フィールドは外れます。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "第 1 行初始使用终端标题，第 2 行初始使用其目录。任意行均可使用这些字段以及终端的标签。行右侧的字段显示在行尾。每个 Agent 图标周围的状态环会显示其状态；status_badge 则会以胶囊形式额外显示状态。当图标已能表明程序名称时，含有其他字段的行会自动省略 Agent 字段。"
+            "value" : "第 1 行初始使用终端标题和 Host，第 2 行初始使用工作区和变更。任意行均可使用这些字段以及终端的标签。行右侧的字段显示在行尾。每个 Agent 图标周围的状态环会显示其状态；status_badge 则会以胶囊形式额外显示状态。当图标已能表明程序名称时，含有其他字段的行会自动省略 Agent 字段。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "第 1 列以終端機的標題為起點，第 2 列以它的目錄為起點。任何一列都可以使用這些欄位以及你的終端機標籤。列右側的欄位會結束該行。每個 Agent 標記外圍的圓環顯示它的狀態；status_badge 會以膠囊樣式加上狀態。標記已能指出程式時，Agent 欄位會從有其他欄位的列中省略。"
+            "value" : "第 1 列以終端機的標題與 Host 為起點，第 2 列以工作區與變更為起點。任何一列都可以使用這些欄位以及你的終端機標籤。列右側的欄位會結束該行。每個 Agent 標記外圍的圓環顯示它的狀態；status_badge 會以膠囊樣式加上狀態。標記已能指出程式時，Agent 欄位會從有其他欄位的列中省略。"
+          }
+        }
+      }
+    },
+    "Row 1 starts from the terminal's title and Host, and Row 2 from the Workspace and Changes. Any row can use these fields. Fields on a row's right side end its line. The ring around each Agent's mark shows its status; status_badge adds it in a capsule. Where the mark names the program, the Agent field leaves rows with other fields." : {
+      "comment" : "Agent List Fields footer when the Host has no herdr plugin and no Terminal labels",
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "行 1 はターミナルのタイトルと Host から、行 2 は Workspace と変更数から始まります。どの行もこれらのフィールドを使えます。行の右側のフィールドはその行の末尾に置かれます。各エージェントのマークを囲むリングがステータスを示し、status_badge はそれをカプセルで表示します。マークがプログラムを示す場合、他のフィールドがある行から Agent フィールドは外れます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 1 行初始使用终端标题和 Host，第 2 行初始使用工作区和变更。任意行均可使用这些字段。行右侧的字段显示在行尾。每个 Agent 图标周围的状态环会显示其状态；status_badge 则会以胶囊形式额外显示状态。当图标已能表明程序名称时，含有其他字段的行会自动省略 Agent 字段。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 1 列以終端機的標題與 Host 為起點，第 2 列以工作區與變更為起點。任何一列都可以使用這些欄位。列右側的欄位會結束該行。每個 Agent 標記外圍的圓環顯示它的狀態；status_badge 會以膠囊樣式加上狀態。標記已能指出程式時，Agent 欄位會從有其他欄位的列中省略。"
           }
         }
       }
@@ -47395,6 +47503,7 @@
         }
       }
     },
+    "SSH could not open %@: Rex stopped, or the SSH server refuses socket forwarding" : {},
     "SSH unavailable" : {
       "localizations" : {
         "ja" : {
@@ -48330,6 +48439,7 @@
         }
       }
     },
+    "Send Anyway" : {},
     "Send Back" : {
       "localizations" : {
         "ja" : {
@@ -48485,6 +48595,7 @@
         }
       }
     },
+    "Sends the command as typed, though Chat's menu doesn't offer it" : {},
     "Sends this key directly to the Agent" : {
       "localizations" : {
         "ja" : {
@@ -48636,28 +48747,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "伺服器"
-          }
-        }
-      }
-    },
-    "Server Kind" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "サーバーの種類"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "服务器类型"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "伺服器類型"
           }
         }
       }
@@ -48815,28 +48904,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "服務失敗"
-          }
-        }
-      }
-    },
-    "Session" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "セッション"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "会话"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "工作階段"
           }
         }
       }
@@ -49681,7 +49748,6 @@
         }
       }
     },
-    "Show in Heeler" : {},
     "Show keyboard" : {
       "localizations" : {
         "ja" : {
@@ -49942,6 +50008,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示上一次的回報。下拉可重試。"
+          }
+        }
+      }
+    },
+    "Shown at %lld columns by %lld rows" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Shown at %1$lld columns by %2$lld rows"
           }
         }
       }
@@ -50743,6 +50819,7 @@
         }
       }
     },
+    "Sized for another device" : {},
     "Skill" : {
       "localizations" : {
         "ja" : {
@@ -51060,29 +51137,8 @@
         }
       }
     },
-    "Socket" : {
-      "localizations" : {
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ソケット"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "套接字"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Socket"
-          }
-        }
-      }
-    },
     "Socket (blank for default)" : {},
+    "Socket found, but this account cannot use it" : {},
     "Some Changes details were truncated." : {
       "localizations" : {
         "ja" : {
@@ -51392,6 +51448,8 @@
         }
       }
     },
+    "Start Rex on the Host, or allow stream-local forwarding in its SSH server, then check again. Heeler does not start Rex." : {},
+    "Start Rex on the Host, then check again. Heeler does not start it." : {},
     "Start herdr-core" : {
       "localizations" : {
         "ja" : {
@@ -56869,6 +56927,7 @@
         }
       }
     },
+    "The Host didn't answer. The size may still change." : {},
     "The Host does not accept RSA-SHA2-512" : {
       "localizations" : {
         "ja" : {
@@ -57185,6 +57244,7 @@
         }
       }
     },
+    "The Host isn't connected right now." : {},
     "The Host plugin probe failed." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -57519,6 +57579,7 @@
         }
       }
     },
+    "The Host turned down the new size." : {},
     "The Host's Address and Port are resolved from the Jump Host, usually through a loopback-only reverse tunnel. %@ You confirm each machine's host key fingerprint independently on first connect." : {
       "localizations" : {
         "ja" : {
@@ -58247,6 +58308,7 @@
         }
       }
     },
+    "The Rex socket found has a path Heeler cannot use." : {},
     "The SSH connection is closed." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -59103,6 +59165,7 @@
         }
       }
     },
+    "The connection to Rex ended." : {},
     "The connection to the Host failed before any Terminal ended, so nothing was removed. Try again once the Host is connected." : {
       "localizations" : {
         "ja" : {
@@ -61577,6 +61640,7 @@
         }
       }
     },
+    "The request was larger than Rex accepts, so it was not sent." : {},
     "The response has neither a result nor an error." : {
       "comment" : "Detail of a connection error.",
       "localizations" : {
@@ -61734,6 +61798,7 @@
         }
       }
     },
+    "The saved Rex Hosts could not be read, so no Rex Host can be added." : {},
     "The saved Snippets could not be read, so nothing was changed." : {
       "localizations" : {
         "ja" : {
@@ -62554,6 +62619,7 @@
         }
       }
     },
+    "The terminal's screen couldn't be read through Rex" : {},
     "The top of Oh My Pi's panel is off screen." : {
       "localizations" : {
         "ja" : {
@@ -63896,6 +63962,8 @@
     "This Pane belongs to a tmux server that is gone" : {},
     "This Pane belongs to a tmux server that is gone. Open it again from the list." : {},
     "This Pane is gone" : {},
+    "This Terminal belongs to a Rex server that is gone" : {},
+    "This Terminal belongs to a Rex server that is gone. Open it again from the list." : {},
     "This Terminal belongs to a core that is gone" : {
       "localizations" : {
         "ja" : {
@@ -64028,6 +64096,8 @@
         }
       }
     },
+    "This account may not use the socket at %@" : {},
+    "This action on a Rex Host" : {},
     "This action on a tmux Host" : {
       "localizations" : {
         "ja" : {
@@ -65309,6 +65379,7 @@
         }
       }
     },
+    "This paste is too large to send to a Rex terminal in one piece. Paste less at a time." : {},
     "This permanently deletes the Host configuration, its trusted host key, and any saved password from the Keychain." : {
       "localizations" : {
         "ja" : {
@@ -65711,6 +65782,7 @@
         }
       }
     },
+    "This terminal's history is too long to show" : {},
     "This text contains control characters a terminal would read as commands. Remove them and try again." : {
       "localizations" : {
         "ja" : {
@@ -65733,6 +65805,7 @@
         }
       }
     },
+    "This version of Rex is not supported" : {},
     "This worker hasn't written any steps to its transcript yet." : {
       "localizations" : {
         "ja" : {
@@ -67523,6 +67596,7 @@
         }
       }
     },
+    "Update Heeler once a version for this Rex is available." : {},
     "Update Heeler to read this Host's Usage format." : {
       "localizations" : {
         "ja" : {
@@ -67590,6 +67664,7 @@
         }
       }
     },
+    "Update Rex on the Host." : {},
     "Update and Turn On" : {
       "comment" : "Plugin notice action button",
       "localizations" : {
@@ -68476,6 +68551,7 @@
         }
       }
     },
+    "Usage comes from herdr and tmux Servers. Rex Servers report none." : {},
     "Usage comes with the Host Helper, which is not available on native Windows yet." : {
       "localizations" : {
         "ja" : {

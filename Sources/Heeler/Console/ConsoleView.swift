@@ -505,6 +505,7 @@ struct ConsoleView: View {
             harnessEdits: console,
             manualReconnectInFlightHostIDs: manualReconnectInFlightHostIDs,
             retryConnection: { await reconnectHost($0) },
+            reconnectHost: { await reconnectMachine($0) },
             stopConnecting: { await console.cancelHostConnection($0) },
             origin: origin,
             onDone: onDone)
@@ -523,6 +524,8 @@ struct ConsoleView: View {
             liveActivities: liveActivities,
             console: console,
             hosts: hosts.integratedHosts,
+            rowLayoutHosts: hosts.rowLayoutHosts,
+            hasOnlyRexServersOn: hosts.hasOnlyRexServersOn,
             onHostAdded: { openHostFromSettings($0) },
             openHostHelper: { openHostFromSettings($0, opensHostHelper: true) },
             onDone: onDone)
@@ -608,7 +611,7 @@ struct ConsoleView: View {
                     AgentUsageDashboard(
                         entries: usageEntries, scopeHostID: usageScope, metric: $usageMetric,
                         showsLimits: $usageShowsLimits, limitsRequested: $usageLimitsRequested,
-                        allowsColumns: true)
+                        allowsColumns: true, hasOnlyRexServersOn: hosts.hasOnlyRexServersOn)
                         .navigationTitle(
                             usageScope.wrappedValue.flatMap { id in usageEntries.first { $0.id == id }?.name }
                                 ?? String(localized: "All Hosts"))
@@ -622,7 +625,7 @@ struct ConsoleView: View {
         } else {
             AgentUsageTabView(
                 entries: usageEntries, scopeHostID: usageScope, metric: $usageMetric,
-                limitsRequested: $usageLimitsRequested)
+                limitsRequested: $usageLimitsRequested, hasOnlyRexServersOn: hosts.hasOnlyRexServersOn)
         }
     }
 
@@ -2621,12 +2624,11 @@ struct ConsoleView: View {
     }
 
     /// Where the New Terminal sheet starts with the filter on one Host: that
-    /// Host's Server in `offered`, when it has one only. With more, the
-    /// filter does not say which, so the sheet's picker asks.
+    /// Host's first Server in `offered`. When the Host has more than one, the
+    /// sheet's Server picker offers the rest.
     static func newTerminalHostID(offered: [Host], filteredTo filtered: [HostMachine]) -> Host.ID? {
         guard filtered.count == 1, let host = filtered.first else { return nil }
-        let servers = offered.filter { host.contains($0.id) }
-        return servers.count == 1 ? servers.first?.id : nil
+        return offered.first { host.contains($0.id) }?.id
     }
 
     private struct HostsTabRequest {
@@ -2748,6 +2750,18 @@ struct ConsoleView: View {
         await console.retryHost(id)
         try? await Task.sleep(for: .milliseconds(1_200))
         manualReconnectInFlightHostIDs.remove(id)
+    }
+
+    /// Host detail's Reconnect: the Host's Servers dial again together, on
+    /// whichever route wins (ADR 0058). A second press while one is being
+    /// served does nothing.
+    private func reconnectMachine(_ machine: HostMachine) async {
+        let servers = Set(machine.servers.map(\.id))
+        guard manualReconnectInFlightHostIDs.isDisjoint(with: servers) else { return }
+        manualReconnectInFlightHostIDs.formUnion(servers)
+        await console.reconnect(machine)
+        try? await Task.sleep(for: .milliseconds(1_200))
+        manualReconnectInFlightHostIDs.subtract(servers)
     }
 }
 
@@ -3209,7 +3223,8 @@ struct MissingAgentPresentation: Equatable {
         /// Standing Failure.
         case hostFailed
         /// The Host is Connected, but its first snapshot for this connection
-        /// has not landed yet.
+        /// has not landed yet, or it lists the Pane without having said what
+        /// holds it.
         case hostLoadingAgents
         case paneGone
     }
@@ -3248,6 +3263,7 @@ struct MissingAgentPresentation: Equatable {
         hostStatuses: [Host.ID: EventsSessionStatus],
         hosts: [Host],
         hostsAwaitingSnapshot: Set<Host.ID> = [],
+        panesAwaitingForeground: Set<ConsoleAgent.ID> = [],
         hostStandingFailures: [Host.ID: TransportError] = [:]
     ) {
         let host = hosts.first { $0.id == agentID.hostID }
@@ -3292,7 +3308,7 @@ struct MissingAgentPresentation: Equatable {
         case .failed(let failure):
             (cause, title, systemImage, message) = applyFailed(failure)
         case .connected:
-            if hostsAwaitingSnapshot.contains(agentID.hostID) {
+            if hostsAwaitingSnapshot.contains(agentID.hostID) || panesAwaitingForeground.contains(agentID) {
                 cause = .hostLoadingAgents
                 title = String(localized: "Loading Agents…")
                 systemImage = "hourglass"
@@ -3343,6 +3359,7 @@ struct MissingAgentPresentation: Equatable {
             hostStatuses: console.hostStatuses,
             hosts: hosts.consoleHosts,
             hostsAwaitingSnapshot: console.hostsAwaitingSnapshot,
+            panesAwaitingForeground: console.panesAwaitingForeground,
             hostStandingFailures: console.hostStandingFailures)
     }
 }
