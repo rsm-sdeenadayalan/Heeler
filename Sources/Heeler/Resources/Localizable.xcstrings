@@ -1071,8 +1071,50 @@
         }
       }
     },
-    "%@ is already in Heeler. Checked servers are turned on there." : {},
-    "%@ is already in Heeler. Checked servers are turned on there. Its host key changed, and the key from the Pairing Code replaces the one trusted before." : {},
+    "%@ is already in Heeler. Checked servers are turned on there." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ はすでに Heeler にあります。チェックしたサーバーはそのホストでオンになります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已在 Heeler 中。勾选的服务器会在该主机下开启。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已在 Heeler 中。勾選的伺服器會在該主機下開啟。"
+          }
+        }
+      }
+    },
+    "%@ is already in Heeler. Checked servers are turned on there. Its host key changed, and the key from the Pairing Code replaces the one trusted before." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ はすでに Heeler にあります。チェックしたサーバーはそのホストでオンになります。ホスト鍵が変わっているため、以前信頼した鍵はペアリングコードの鍵に置き換えられます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已在 Heeler 中。勾选的服务器会在该主机下开启。其主机密钥已更改，配对码中的密钥将取代之前信任的密钥。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 已在 Heeler 中。勾選的伺服器會在該主機下開啟。它的主機金鑰已變更，配對碼中的金鑰會取代先前信任的金鑰。"
+          }
+        }
+      }
+    },
     "%@ is no longer a Template on this Host, so nothing started. Detect Again refreshes the list." : {
       "localizations" : {
         "ja" : {
@@ -6576,6 +6618,72 @@
         }
       }
     },
+    "A tailcat address with a pre-shared key." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "事前共有鍵付きの tailcat アドレスです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "带预共享密钥的 tailcat 地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "含預先共用金鑰的 tailcat 位址。"
+          }
+        }
+      }
+    },
+    "A tailcat tunnel reaches one machine, the one running tailcat serve, as %@. The Jump Host's port must be one that tailcat serve exposes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat トンネルが到達できるのは tailcat serve を実行しているマシン 1 台だけで、アドレスは %@ です。ジャンプホストのポートは、tailcat serve が公開しているポートのいずれかである必要があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 隧道只连接一台机器，即运行 tailcat serve 的那台，地址为 %@。跳板机的端口必须是 tailcat serve 开放的端口之一。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 通道只會連到一台機器，也就是執行 tailcat serve 的那台，位址為 %@。跳板主機的連接埠必須是 tailcat serve 開放的其中一個。"
+          }
+        }
+      }
+    },
+    "A tailcat tunnel reaches one machine, the one running tailcat serve, as %@. This Host's port must be one that tailcat serve exposes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat トンネルが到達できるのは tailcat serve を実行しているマシン 1 台だけで、アドレスは %@ です。このホストのポートは、tailcat serve が公開しているポートのいずれかである必要があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 隧道只连接一台机器，即运行 tailcat serve 的那台，地址为 %@。此主机的端口必须是 tailcat serve 开放的端口之一。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 通道只會連到一台機器，也就是執行 tailcat serve 的那台，位址為 %@。此主機的連接埠必須是 tailcat serve 開放的其中一個。"
+          }
+        }
+      }
+    },
     "A text field in the dialog has the cursor, so a digit would be typed into it." : {
       "localizations" : {
         "ja" : {
@@ -7176,7 +7284,28 @@
         }
       }
     },
-    "Add Host Without Servers" : {},
+    "Add Host Without Servers" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーなしでホストを追加"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加主机（不含服务器）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增主機（不含伺服器）"
+          }
+        }
+      }
+    },
     "Add Host with %lld Servers" : {
       "comment" : "Button on Add Host's last step. Argument: how many servers are checked.",
       "localizations" : {
@@ -7548,7 +7677,28 @@
         }
       }
     },
-    "Add a Jump Host or an overlay network under More Options." : {},
+    "Add a Jump Host or an overlay network under More Options." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジャンプホストやオーバーレイネットワークは「その他のオプション」で追加できます。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可在“更多选项”中添加跳板机或叠加网络。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可在「更多選項」中加入跳板主機或覆蓋網路。"
+          }
+        }
+      }
+    },
     "Add a Note" : {
       "localizations" : {
         "ja" : {
@@ -9334,7 +9484,28 @@
         }
       }
     },
-    "Already on" : {},
+    "Already on" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すでにオン"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已开启"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已開啟"
+          }
+        }
+      }
+    },
     "Already there: %@" : {
       "localizations" : {
         "ja" : {
@@ -12783,6 +12954,28 @@
         }
       }
     },
+    "Change the address in the Host's route." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの経路でアドレスを変更してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在主机的线路中修改地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在主機的路由中修改位址。"
+          }
+        }
+      }
+    },
     "Changed %@" : {
       "localizations" : {
         "ja" : {
@@ -13837,7 +14030,28 @@
         }
       }
     },
-    "Checked servers bring their Agents into Heeler. The rest stay on this Host, switched off." : {},
+    "Checked servers bring their Agents into Heeler. The rest stay on this Host, switched off." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チェックしたサーバーのエージェントが Heeler に表示されます。残りはオフのままこのホストに残ります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "勾选的服务器会把其 Agent 带入 Heeler。其余的保留在此主机上，处于关闭状态。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "勾選的伺服器會把其 Agent 帶入 Heeler。其餘的會留在此主機上，維持關閉。"
+          }
+        }
+      }
+    },
     "Checking" : {
       "localizations" : {
         "ja" : {
@@ -16363,7 +16577,28 @@
         }
       }
     },
-    "Connect" : {},
+    "Connect" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線"
+          }
+        }
+      }
+    },
     "Connect as the account that runs Rex." : {},
     "Connect directly to the Host that owns this herdr-core Terminal" : {
       "comment" : "Name of a feature that is unavailable, shown under \"This feature is unavailable on the Host\".",
@@ -17802,7 +18037,28 @@
         }
       }
     },
-    "Copy the Command That Prints It" : {},
+    "Copy the Command That Prints It" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "表示するコマンドをコピー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "拷贝用于显示指纹的命令"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "複製用來顯示指紋的指令"
+          }
+        }
+      }
+    },
     "Copy the address on %@" : {
       "comment" : "VoiceOver label. %@ is an EasyTier network name.",
       "localizations" : {
@@ -17870,7 +18126,28 @@
         }
       }
     },
-    "Could Not Finish" : {},
+    "Could Not Finish" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "完了できませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法完成"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法完成"
+          }
+        }
+      }
+    },
     "Could Not Remove Host" : {
       "localizations" : {
         "ja" : {
@@ -18910,7 +19187,28 @@
         }
       }
     },
-    "Couldn't reach %@" : {},
+    "Couldn't reach %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ に到達できませんでした"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法连接到 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法連線到 %@"
+          }
+        }
+      }
+    },
     "Couldn't reach %@. Rows unchanged." : {
       "comment" : "Sync from plugin failure. %@ is the Host name.",
       "localizations" : {
@@ -20672,6 +20970,36 @@
         }
       }
     },
+    "Dialog More Options" : {
+      "comment" : "Row on a Blocked card that shows the dialog's other answers, not more settings",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "More Options"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その他の選択肢"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多选项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多選項"
+          }
+        }
+      }
+    },
     "Diff Layout" : {
       "localizations" : {
         "ja" : {
@@ -20738,24 +21066,24 @@
         }
       }
     },
-    "Direct uses this device's own network connection. Add Tailscale, ZeroTier, or EasyTier networks in Settings › Overlay Networks." : {
+    "Direct uses this device's own network connection. Add Tailscale, ZeroTier, EasyTier, or tailcat networks in Settings › Overlay Networks." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "「直接」はこのデバイス自身のネットワーク接続を使います。Tailscale、ZeroTier、EasyTier のネットワークは「設定 › オーバーレイネットワーク」で追加してください。"
+            "value" : "「直接」はこのデバイス自身のネットワーク接続を使います。Tailscale、ZeroTier、EasyTier、tailcat のネットワークは「設定 › オーバーレイネットワーク」で追加してください。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "“直连”使用此设备自身的网络连接。可在“设置”>“叠加网络”中添加 Tailscale、ZeroTier 或 EasyTier 网络。"
+            "value" : "“直连”使用此设备自身的网络连接。可在“设置”>“叠加网络”中添加 Tailscale、ZeroTier、EasyTier 或 tailcat 网络。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "直接連線會使用此裝置本身的網路連線。你可以在「設定 › 覆蓋網路」中加入 Tailscale、ZeroTier 或 EasyTier 網路。"
+            "value" : "直接連線會使用此裝置本身的網路連線。你可以在「設定 › 覆蓋網路」中加入 Tailscale、ZeroTier、EasyTier 或 tailcat 網路。"
           }
         }
       }
@@ -24637,6 +24965,24 @@
             "state" : "new",
             "value" : "First connection to %1$@:%2$@. Verify the fingerprint matches the Host's key before trusting."
           }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@:%2$@ への初回接続。信頼する前に、フィンガープリントがホストの鍵と一致するか確認してください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首次连接到 %1$@:%2$@。信任前请核对指纹是否与主机的密钥一致。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "首次連線到 %1$@:%2$@。信任前請確認指紋與主機金鑰相符。"
+          }
         }
       }
     },
@@ -25105,7 +25451,28 @@
         }
       }
     },
-    "Found on %@" : {},
+    "Found on %@" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ で検出"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 上找到"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 %@ 上找到"
+          }
+        }
+      }
+    },
     "From %@" : {
       "comment" : "Changes row: the path a file was renamed from",
       "localizations" : {
@@ -28535,7 +28902,28 @@
         }
       }
     },
-    "Heeler looked for %@." : {},
+    "Heeler looked for %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler は %@ を探しました。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 已查找 %@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heeler 已尋找 %@。"
+          }
+        }
+      }
+    },
     "Heeler made these changes. Removing the Host Helper undoes OpenCode's and leaves any other in place." : {
       "localizations" : {
         "ja" : {
@@ -31210,7 +31598,28 @@
         }
       }
     },
-    "Install or start one on the Host, then scan again." : {},
+    "Install or start one on the Host, then scan again." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストでいずれかをインストールまたは起動してから、再スキャンしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在主机上安装或启动其中一种，然后重新扫描。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在主機上安裝或啟動其中一種，然後重新掃描。"
+          }
+        }
+      }
+    },
     "Install the Heeler plugin for notifications, Live Activity updates, and herdr's sidebar fields." : {
       "localizations" : {
         "ja" : {
@@ -32174,7 +32583,28 @@
         }
       }
     },
-    "Key Fingerprint" : {},
+    "Key Fingerprint" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "鍵のフィンガープリント"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密钥指纹"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "金鑰指紋"
+          }
+        }
+      }
+    },
     "Key Updates" : {
       "localizations" : {
         "ja" : {
@@ -33990,7 +34420,28 @@
         }
       }
     },
-    "Looking for servers…" : {},
+    "Looking for servers…" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーを探しています…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在查找服务器…"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在尋找伺服器…"
+          }
+        }
+      }
+    },
     "Looking for the conversation…" : {
       "localizations" : {
         "ja" : {
@@ -34798,7 +35249,28 @@
         }
       }
     },
-    "More Options" : {},
+    "More Options" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その他のオプション"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多选项"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更多選項"
+          }
+        }
+      }
+    },
     "Move Left" : {
       "localizations" : {
         "ja" : {
@@ -35587,7 +36059,28 @@
         }
       }
     },
-    "New Host" : {},
+    "New Host" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新規ホスト"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新主机"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增主機"
+          }
+        }
+      }
+    },
     "New Preset" : {
       "localizations" : {
         "ja" : {
@@ -37319,7 +37812,28 @@
     },
     "No servers found" : {},
     "No servers on" : {},
-    "No servers yet" : {},
+    "No servers yet" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーはまだありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂无服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚無伺服器"
+          }
+        }
+      }
+    },
     "No skills found for this agent." : {
       "localizations" : {
         "ja" : {
@@ -39404,6 +39918,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "每次錄音辨識一種語言，其中夾雜的英文單字也能辨識。關鍵字有助於拼對你的用語。說話時文字會即時顯示，所有內容都不會離開這部裝置。"
+          }
+        }
+      }
+    },
+    "One machine, by its address" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アドレスで 1 台のマシンに接続"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "凭地址连接一台机器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "以位址連到一台機器"
           }
         }
       }
@@ -41811,6 +42347,50 @@
         }
       }
     },
+    "Over an overlay network that no longer exists." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用するオーバーレイネットワークはもう存在しません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所用的叠加网络已不存在。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所用的覆蓋網路已不存在。"
+          }
+        }
+      }
+    },
+    "Over overlay network “%@”." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オーバーレイネットワーク「%@」経由で接続します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过叠加网络“%@”连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過覆蓋網路「%@」連線。"
+          }
+        }
+      }
+    },
     "Overlay Networks" : {
       "localizations" : {
         "ja" : {
@@ -41851,6 +42431,56 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "覆蓋網路"
+          }
+        }
+      }
+    },
+    "Overlay network “%@” cannot reach this address" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オーバーレイネットワーク「%@」ではこのアドレスに到達できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "叠加网络“%@”无法访问此地址"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "覆蓋網路「%@」無法連線到此位址"
+          }
+        }
+      }
+    },
+    "Overlay network “%@” cannot reach this address. Change the address in the Host's route, then run the checks again. (%@)" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Overlay network “%1$@” cannot reach this address. Change the address in the Host's route, then run the checks again. (%2$@)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オーバーレイネットワーク「%1$@」ではこのアドレスに到達できません。ホストの経路でアドレスを変更してから、再チェックを実行してください。（%2$@）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "叠加网络“%1$@”无法访问此地址。请在主机的线路中修改地址，然后重新运行检查。（%2$@）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "覆蓋網路「%1$@」無法連線到此位址。請在主機的路由中修改位址，然後重新執行檢查。（%2$@）"
           }
         }
       }
@@ -42534,6 +43164,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "貼上配對碼"
+          }
+        }
+      }
+    },
+    "Paste a new address when the server's key changes. Hosts on this tunnel keep their routes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーの鍵が変わったら、新しいアドレスをペーストしてください。このトンネルを使うホストの経路はそのままです。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器的密钥变更后，请粘贴新地址。使用此隧道的主机会保留其线路。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器的金鑰變更後，請貼上新位址。使用此通道的主機會保留其路由。"
           }
         }
       }
@@ -43335,7 +43987,28 @@
         }
       }
     },
-    "Port %@." : {},
+    "Port %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ポート %@。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "端口 %@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連接埠 %@。"
+          }
+        }
+      }
+    },
     "Possibly incomplete · %@" : {
       "comment" : "Changes freshness, then the read time",
       "localizations" : {
@@ -44707,24 +45380,24 @@
         }
       }
     },
-    "Reach a Mac outside your local network through Tailscale, ZeroTier, or EasyTier. Heeler joins on its own, without a VPN." : {
+    "Reach a Mac outside your local network through Tailscale, ZeroTier, EasyTier, or tailcat. Heeler joins on its own, without a VPN." : {
       "localizations" : {
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ローカルネットワークの外にある Mac へは、Tailscale、ZeroTier、EasyTier 経由で接続します。Heeler は VPN なしで自動的に参加します。"
+            "value" : "ローカルネットワークの外にある Mac へは、Tailscale、ZeroTier、EasyTier、tailcat 経由で接続します。Heeler は VPN なしで自動的に参加します。"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通过 Tailscale、ZeroTier 或 EasyTier 连接局域网外的 Mac。Heeler 无需开启 VPN 即可自行加入网络。"
+            "value" : "通过 Tailscale、ZeroTier、EasyTier 或 tailcat 连接局域网外的 Mac。Heeler 无需开启 VPN 即可自行加入网络。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "透過 Tailscale、ZeroTier 或 EasyTier 連到區域網路以外的 Mac。Heeler 會自行加入，不需要 VPN。"
+            "value" : "透過 Tailscale、ZeroTier、EasyTier 或 tailcat 連到區域網路以外的 Mac。Heeler 會自行加入，不需要 VPN。"
           }
         }
       }
@@ -48366,6 +49039,28 @@
         }
       }
     },
+    "Run %@ on the machine and paste the address it prints. Anyone who has it can reach that port, so Heeler keeps it in the Keychain." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのマシンで %@ を実行し、表示されたアドレスをペーストしてください。このアドレスを知っていれば誰でもそのポートに接続できるため、Heeler はキーチェーンに保管します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在那台机器上运行 %@，然后粘贴它打印的地址。任何拿到该地址的人都能访问那个端口，因此 Heeler 会将其保存在钥匙串中。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在那台機器上執行 %@，然後貼上它印出的位址。任何取得該位址的人都能連到那個連接埠，因此 Heeler 會將它存放在鑰匙圈中。"
+          }
+        }
+      }
+    },
     "Run Checks Again" : {
       "localizations" : {
         "ja" : {
@@ -48432,7 +49127,28 @@
         }
       }
     },
-    "Run the command on the Host and compare what it prints with this fingerprint." : {},
+    "Run the command on the Host and compare what it prints with this fingerprint." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストでコマンドを実行し、表示された内容をこのフィンガープリントと比べてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在主机上运行该命令，并将输出与此指纹比对。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在主機上執行該指令，並將輸出內容與此指紋比對。"
+          }
+        }
+      }
+    },
     "Run these on the machine. The second command shows a QR code." : {
       "localizations" : {
         "ja" : {
@@ -48786,6 +49502,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "儲存"
+          }
+        }
+      }
+    },
+    "Save Without Connecting" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続せずに保存"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存但不连接"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "儲存但不連線"
           }
         }
       }
@@ -50105,7 +50843,28 @@
         }
       }
     },
-    "Servers" : {},
+    "Servers" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器"
+          }
+        }
+      }
+    },
     "Service" : {
       "localizations" : {
         "ja" : {
@@ -50195,7 +50954,28 @@
         }
       }
     },
-    "Set One Up" : {},
+    "Set One Up" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "いずれかをセットアップ"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置其中一种"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定其中一種"
+          }
+        }
+      }
+    },
     "Set Up herdr on Windows" : {
       "localizations" : {
         "ja" : {
@@ -52596,7 +53376,28 @@
       }
     },
     "Socket (blank for default)" : {},
-    "Socket found, but this account cannot use it" : {},
+    "Socket found, but this account cannot use it" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ソケットは見つかりましたが、このアカウントでは使用できません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已找到套接字，但此账户无法使用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已找到 socket，但此帳號無法使用"
+          }
+        }
+      }
+    },
     "Some Changes details were truncated." : {
       "localizations" : {
         "ja" : {
@@ -53537,6 +54338,24 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "Step %1$lld of %2$lld, %3$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%2$lld ステップ中 %1$lld ステップ目、%3$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %1$lld 步，共 %2$lld 步，%3$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %1$lld 步，共 %2$lld 步，%3$@"
           }
         }
       }
@@ -57876,7 +58695,28 @@
         }
       }
     },
-    "The Host could not be saved." : {},
+    "The Host could not be saved." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストを保存できませんでした。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存主机。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法儲存主機。"
+          }
+        }
+      }
+    },
     "The Host couldn't be reached. The tab is still open there." : {
       "localizations" : {
         "ja" : {
@@ -60123,7 +60963,28 @@
       }
     },
     "The Server could not be turned off." : {},
-    "The Server could not be turned on. (%@)" : {},
+    "The Server could not be turned on. (%@)" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーをオンにできませんでした。（%@）"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法开启该服务器。（%@）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法開啟該伺服器。（%@）"
+          }
+        }
+      }
+    },
     "The Snippet could not be saved." : {
       "localizations" : {
         "ja" : {
@@ -60233,6 +61094,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Windows herdr 指令在啟動其串流前就結束了"
+          }
+        }
+      }
+    },
+    "The address changes every time tailcat serve starts, unless the machine has a saved key: %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat serve を起動するたびにアドレスは変わります。マシンに鍵を保存しておけば変わりません: %@。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次启动 tailcat serve 地址都会改变，除非那台机器保存了密钥：%@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次啟動 tailcat serve 位址都會改變，除非那台機器已儲存金鑰：%@。"
           }
         }
       }
@@ -62156,6 +63039,28 @@
         }
       }
     },
+    "The machine running tailcat serve. Tap it to add it as a Host, on a port tailcat serve exposes." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat serve を実行しているマシンです。タップするとホストとして追加できます。ポートは tailcat serve が公開しているものを使います。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行 tailcat serve 的机器。轻点即可将其添加为主机，端口需是 tailcat serve 开放的端口。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "執行 tailcat serve 的機器。點一下即可將其加入為主機，連接埠須為 tailcat serve 開放的連接埠。"
+          }
+        }
+      }
+    },
     "The message contains terminal control characters." : {
       "comment" : "Error message when a message contains terminal control characters.",
       "isCommentAutoGenerated" : true,
@@ -63564,7 +64469,28 @@
         }
       }
     },
-    "The saved Rex Hosts could not be read, so no Rex Host can be added." : {},
+    "The saved Rex Hosts could not be read, so no Rex Host can be added." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存済みの Rex ホストを読み取れず、Rex ホストを追加できません。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法读取已保存的 Rex 主机，因此无法添加 Rex 主机。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法讀取已儲存的 Rex 主機，因此無法新增 Rex 主機。"
+          }
+        }
+      }
+    },
     "The saved Snippets could not be read, so nothing was changed." : {
       "localizations" : {
         "ja" : {
@@ -63869,6 +64795,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法儲存所選工作階段。"
+          }
+        }
+      }
+    },
+    "The server is not answering" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーが応答していません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "服务器没有应答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "伺服器沒有回應"
           }
         }
       }
@@ -64268,6 +65216,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此步驟失敗"
+          }
+        }
+      }
+    },
+    "The tailcat address is missing" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat アドレスがありません"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缺少 tailcat 地址"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缺少 tailcat 位址"
           }
         }
       }
@@ -65952,6 +66922,28 @@
         }
       }
     },
+    "This address has no pre-shared key: whoever runs its relay could open the tunnel too." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このアドレスには事前共有鍵がありません。リレーの運営者もトンネルを開ける可能性があります。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此地址不含预共享密钥：运营其中继的人也能打开这条隧道。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此位址不含預先共用金鑰：營運其中繼的人也能開啟這條通道。"
+          }
+        }
+      }
+    },
     "This app carries a newer Host Helper." : {
       "localizations" : {
         "ja" : {
@@ -67101,6 +68093,28 @@
         }
       }
     },
+    "This is not a tailcat address. Copy the whole address that tailcat serve prints, starting with tc." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これは tailcat アドレスではありません。tailcat serve が表示する、tc で始まるアドレス全体をコピーしてください。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这不是 tailcat 地址。请完整拷贝 tailcat serve 打印的、以 tc 开头的地址。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這不是 tailcat 位址。請完整複製 tailcat serve 印出、以 tc 開頭的位址。"
+          }
+        }
+      }
+    },
     "This language's speech model is needed." : {
       "localizations" : {
         "ja" : {
@@ -67837,7 +68851,28 @@
         }
       }
     },
-    "Through the Jump Host %@." : {},
+    "Through the Jump Host %@." : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジャンプホスト %@ を経由します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "经由跳板机 %@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "經由跳板主機 %@。"
+          }
+        }
+      }
+    },
     "Timed out" : {
       "localizations" : {
         "ja" : {
@@ -68434,6 +69469,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "信任新的金鑰"
+          }
+        }
+      }
+    },
+    "Trust and Continue" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "信頼して続ける"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "信任并继续"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "信任並繼續"
           }
         }
       }
@@ -71038,6 +72095,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "language、prompt、response_format 或 stream 請使用單一值，且不含括號。"
+          }
+        }
+      }
+    },
+    "Use the Tunnel's Address" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "トンネルのアドレスを使用"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用隧道的地址"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用通道的位址"
           }
         }
       }
@@ -77141,6 +78220,50 @@
       }
     },
     "sync issue" : {},
+    "tailcat address" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat アドレス"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 地址"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 位址"
+          }
+        }
+      }
+    },
+    "tailcat server" : {
+      "localizations" : {
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat サーバー"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tailcat 伺服器"
+          }
+        }
+      }
+    },
     "tcp://host:11010, one per line" : {
       "localizations" : {
         "ja" : {
