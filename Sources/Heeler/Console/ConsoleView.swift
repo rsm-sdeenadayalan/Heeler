@@ -1,3 +1,4 @@
+import GameController
 import SwiftUI
 
 /// The Console home screen (#8): a bottom tab bar over Agents across every
@@ -151,7 +152,7 @@ struct ConsoleView: View {
     @State private var listPresentation = ConsoleListPresentationStore()
     /// Outlives the detail column's rebuilds, which is the whole point: it
     /// carries the raised keyboard from one Attach screen to the next.
-    @State private var keyboardHandoff = TerminalKeyboardHandoff()
+    @State private var keyboardHandoff = TerminalKeyboardHandoff(hardwareKeyboard: .system)
     /// Outlives those rebuilds for the same reason. A per-screen inset starts
     /// every switch at zero and only learns the keyboard's height once UIKit
     /// posts the next frame notification, so the terminal that inherits a
@@ -260,6 +261,14 @@ struct ConsoleView: View {
         // opened on even when another window picks a different one.
         .onAppear {
             if listTab == nil { listTab = shownListTab }
+            // The window alone, held weakly: the handoff is this view's own
+            // state and must not keep the view.
+            keyboardHandoff.isCovered = { [sceneWindow] in Self.isPresenting(over: sceneWindow) }
+        }
+        // A keyboard just attached is one the user means to type on, whatever
+        // they put away before it.
+        .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidConnect)) { _ in
+            keyboardHandoff.keyboardCameUp()
         }
         // The detail's actions can present these even while the sidebar is hidden.
         .sheet(item: $titleRename) { store in
@@ -1099,6 +1108,10 @@ struct ConsoleView: View {
                         onShowHostIssues: { isShowingHostIssues = true },
                         onNewTerminal: { isStartingTerminal = true })
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .bottomTrailing) {
+                    MainActorContent { terminalHostIssueCornerOverlay }
+                }
                 .modifier(ConsoleListSearch(
                     text: $terminalSearchText, isPresented: $isTerminalSearchPresented,
                     focus: $focusedSearch, tab: .terminals,
@@ -1459,6 +1472,10 @@ struct ConsoleView: View {
     /// nowhere: a sheet or alert from Hosts, Settings or a list. An active
     /// search field presents on some layouts too, and is not cover.
     private var isPresentingOverConsole: Bool {
+        Self.isPresenting(over: sceneWindow)
+    }
+
+    private static func isPresenting(over sceneWindow: WindowReference?) -> Bool {
         guard let presented = sceneWindow?.window?.rootViewController?.presentedViewController
         else { return false }
         return !(presented is UISearchController)
@@ -1846,7 +1863,7 @@ struct ConsoleView: View {
         ContentUnavailableView {
             Label("No Hosts", systemImage: "server.rack")
         } description: {
-            Text("Add a machine that runs herdr to see its Agents and Terminals here.")
+            Text("Add a machine that runs herdr, tmux or Rex to see its Agents and Terminals here.")
         } actions: {
             Button("Add Host") { presentHosts() }
                 .buttonStyle(.borderedProminent)
@@ -1866,6 +1883,24 @@ struct ConsoleView: View {
                 issues: issues,
                 onOpenHost: { openHostIssue($0) },
                 onShowAll: { isShowingHostIssues = true }
+            )
+            .padding(.trailing, 13)
+            .padding(.bottom, 9)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: issues.isEmpty)
+        }
+    }
+
+    @ViewBuilder
+    private var terminalHostIssueCornerOverlay: some View {
+        if ConsoleHostIssuePlacement(mode: terminalPresentation.mode) == .floatingCorner,
+            !hosts.consoleHosts.isEmpty
+        {
+            let issues = visibleTerminalHostIssues
+            ConsoleHostIssueCornerBadge(
+                issues: issues,
+                onOpenHost: { openHostIssue($0) },
+                onShowAll: { isShowingHostIssues = true },
+                accessibilityID: "terminals.hostIssues.badge"
             )
             .padding(.trailing, 13)
             .padding(.bottom, 9)
@@ -2185,20 +2220,11 @@ struct ConsoleView: View {
         ForEach(sections) { @Sendable section in
             MainActorContent {
                 // A Host with several Servers expands whatever one of them
-                // says: the others may have Agents to show, and each
-                // problem's row opens its own Server's sheet.
+                // says: the others may have Agents to show, while Host
+                // connection conditions float in the bottom-trailing corner.
                 let opensDetail = section.servers.count == 1 && connectionDetail(for: section.hostID) != nil
-                let namesServer = section.servers.count > 1
                 Section {
                     if !section.isCollapsed && !opensDetail {
-                        // As in the Terminals tab: an expanded Host with a
-                        // condition says what it is before any Agents it lists.
-                        ForEach(section.issues) { @Sendable issue in
-                            MainActorContent {
-                                ConsoleHostIssueRow(issue: issue, namesServer: namesServer) { openHostIssue($0) }
-                                    .listRowSeparator(.hidden)
-                            }
-                        }
                         let keys = makeAgentRowKeys(
                             for: section.agents, pass: pass,
                             qualifiers: qualifiers, saved: saved)
@@ -2615,6 +2641,14 @@ struct ConsoleView: View {
         return filteredHostIssues
     }
 
+    private var visibleTerminalHostIssues: [ConsoleHostStatusPresentation] {
+        guard terminalSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return []
+        }
+        return terminalPresentation.projection(hosts: hosts.consoleHosts, console: console)
+            .issues(filteredHostIDs: hostFilter)
+    }
+
     /// Every Host problem under the Host filter, as the flat lists show
     /// them outside a search, and as their summary's sheet lists them.
     private var filteredHostIssues: [ConsoleHostStatusPresentation] {
@@ -2687,8 +2721,13 @@ struct ConsoleView: View {
     private func hostIssuesSheet(presentation sheetPresentation: ConsoleSheetPresentation)
         -> some View
     {
-        ConsoleHostIssuesSheet(
-            issues: filteredHostIssues,
+        let sheetIssues =
+            shownListTab == .terminals && currentTab == .terminals
+            ? terminalPresentation.projection(hosts: hosts.consoleHosts, console: console)
+                .issues(filteredHostIDs: hostFilter)
+            : filteredHostIssues
+        return ConsoleHostIssuesSheet(
+            issues: sheetIssues,
             explained: hostIssuesSheetExplained,
             sheetPresentation: sheetPresentation,
             onOpenHost: { id in
