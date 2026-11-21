@@ -26,6 +26,15 @@ its contract.
   which actions it offers. Focused coverage: `ConsoleListPresentationStoreTests`,
   `TerminalListProjectionTests`, `ConsoleHostSectionHeaderPresentationTests`,
   `ConsoleHostIssueSummaryTests`.
+  The corner status tile and its sheet
+  ([ConsoleHostIssueRow](../../Sources/Heeler/Console/ConsoleHostIssueRow.swift))
+  take one condition for each Host, not for each Server:
+  `ConsoleHostStatusPresentation.perHost` in
+  [ConsoleHostStatusPresentation](../../Sources/Heeler/Console/ConsoleHostStatusPresentation.swift),
+  held as `ConsoleStore.machineIssues`, and the connection sheet they open
+  speaks for the Host (`HostConnectionDetailPresentation(group:)`), its Retry
+  Now and Stop Connecting reaching every Server the Host has on. Coverage:
+  `ConsoleHostConditionsPerHostTests`.
   [HerdrCoreConsoleProjection](../../Sources/Heeler/Console/HerdrCoreConsoleProjection.swift)
   owns a herdr-core Host's; rows start in
   [HerdrCoreOrganization](../../Sources/Heeler/Console/HerdrCoreOrganization.swift),
@@ -394,11 +403,10 @@ is [DemoChatSample](../../Sources/Heeler/Demo/DemoChatSample.swift).
 | Ad Hoc installation | `make adhoc`, `make adhoc-publish` ([packaging](../../scripts/adhoc.py), [publisher](../../scripts/adhoc-publish.py)); [Cloud hook](../../ci_scripts/ci_post_xcodebuild.sh) and [download Worker](../../adhoc-host/src/worker.mjs); [guide](../guides/adhoc-install.md), `make test-adhoc` (also in `make test-tools`) |
 | herdr plugin | [plugin/README.md](../../plugin/README.md), `plugin/herdr-plugin.toml`, `npm test` in `plugin/`; `make plugin` ([publish-plugin.sh](../../scripts/publish-plugin.sh), `bash scripts/test-publish-plugin.sh`) publishes it to the `plugin` branch ([ADR 0026](../adr/0026-plugin-distribution-branch.md)). `plugin/src/delivery/` is shared with the Host Helper ([ADR 0033](../adr/0033-herdr-core-hosts-run-a-heeler-host-helper.md)), so it imports only relative paths and Node built-ins and reads no `HERDR_*` variable; `plugin/helper/` stays off the branch. Helper code imports plugin code only as `./shared/<path>`, which `node scripts/generate-host-helper-manifest.mjs` copies from `plugin/src/<path>` before it writes the checked `manifest.json` (`plugin/test/helper-closure.test.js`, `scripts/test-host-helper-manifest.py`); any Helper change also bumps `plugin/helper/version.json`, `plugin/test-vectors/host-helper-version-v1.json` and `HostHelperCompatibility.bundled` |
 | Push Relay | [relay/README.md](../../relay/README.md), `npm test` in `relay/` |
-| Marketing site | [landing](../../landing), its `package.json` scripts, [landing CI](../../.github/workflows/landing.yml) |
-| Docs site | [docs-site/README.md](../../docs-site/README.md) publishes selected `docs/guides/` (English and `docs/guides/zh/`); `pnpm test`, `pnpm run check`, `pnpm run build`, `pnpm run check:links` in `docs-site/`, [docs site CI](../../.github/workflows/docs-site.yml) |
+| Marketing site | [landing](../../landing), its `package.json` scripts, [Cloudflare CI](../../.github/workflows/cloudflare.yml) |
+| Docs site | [docs-site/README.md](../../docs-site/README.md) publishes selected `docs/guides/` (English and `docs/guides/zh/`); `pnpm test`, `pnpm run check`, `pnpm run build`, `pnpm run check:links` in `docs-site/`, [Cloudflare CI](../../.github/workflows/cloudflare.yml) |
 | Wire types | [generate-wire-types.py](../../scripts/generate-wire-types.py) consumes the committed [herdr-schema.json](../../scripts/herdr-schema.json); generated output is [Transport/Generated](../../Sources/Heeler/Transport/Generated) |
-| App/package CI | Fast builds: [ci.yml](../../.github/workflows/ci.yml), [ci-package.yml](../../.github/workflows/ci-package.yml); script self-tests: [ci-scripts.yml](../../.github/workflows/ci-scripts.yml). Full daily/manual verification: [ci-full.yml](../../.github/workflows/ci-full.yml), [run-ci-ios-tests.sh](../../scripts/run-ci-ios-tests.sh); failed scheduled runs: [ci-full-alert.yml](../../.github/workflows/ci-full-alert.yml). Routing and evidence: [testing.md](testing.md) |
-| Node/codegen CI | [ci-node.yml](../../.github/workflows/ci-node.yml) |
+| CI & Simulator verification | PR checks and fast build: [ci.yml](../../.github/workflows/ci.yml). Full daily/manual verification: [ci-full.yml](../../.github/workflows/ci-full.yml), [run-ci-ios-tests.sh](../../scripts/run-ci-ios-tests.sh). Local tool checks: [run-tool-tests.py](../../scripts/run-tool-tests.py). Routing: [testing.md](testing.md) |
 
 Find a symbol before reading a large file: `rg -n 'symbol' Sources Tests`.
 Follow definitions, construction sites, and state updates through the UI;

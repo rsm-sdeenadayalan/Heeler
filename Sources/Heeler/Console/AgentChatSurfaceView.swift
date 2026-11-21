@@ -50,7 +50,6 @@ struct AgentChatSurfaceView: View {
     /// Where the Composer and what sits on it begin, in the global space,
     /// and how far it is from there to the screen's bottom.
     @State private var bottomEdge = ChatTimelineBottomEdge()
-    @State private var bottomChromeHeight: CGFloat = 0
     @State private var surfaceHeight: CGFloat = 0
     @State private var jumpRequest = 0
     @State private var previousMessageRequest = 0
@@ -83,6 +82,9 @@ struct AgentChatSurfaceView: View {
     @State private var isManagingSnippets = false
     @State private var isShowingSkillsPicker = false
     @State private var viewingSkill: AgentSkill?
+    @State private var previewedVideo: HostFilePreview?
+    @State private var videoPreviewCopies = HostFileCopies()
+    @State private var videoPreviewPace = HostFilePace()
     /// Claude Code's "Switch model?" question, asked again on the phone.
     @State private var switchQuestion: SwitchQuestion?
     /// A status-line switch under way; the controls wait for it, since two
@@ -247,7 +249,7 @@ struct AgentChatSurfaceView: View {
             selection: $selectedPhotos,
             maxSelectionCount: 10,
             selectionBehavior: .ordered,
-            matching: .images)
+            matching: .any(of: [.images, .videos]))
         .fileImporter(
             isPresented: $isSelectingFile,
             allowedContentTypes: [.data]
@@ -313,6 +315,10 @@ struct AgentChatSurfaceView: View {
             if let chat {
                 ChatCandidatePickerView(chat: chat, corePin: session.corePin)
             }
+        }
+        .fullScreenCover(item: $previewedVideo) { preview in
+            HostFilePreviewView(preview: preview)
+                .onDisappear { preview.discard() }
         }
         .sheet(item: $viewingSkill) { skill in
             SkillContentSheet(skill: skill) { [console, agent] in
@@ -450,7 +456,7 @@ struct AgentChatSurfaceView: View {
         .onChange(of: selectedPhotos) { _, items in
             guard !items.isEmpty else { return }
             selectedPhotos = []
-            composer.enqueueImages(items.map { PhotosPickerImageSelection(item: $0) })
+            session.enqueuePickedMedia(items.map(PickedMedia.from))
         }
         .onChange(of: composer.draft.hasPrefix("/"), initial: true) { _, opensMenu in
             guard opensMenu, let skills else { return }
@@ -518,6 +524,13 @@ struct AgentChatSurfaceView: View {
             // in the surface's body each one's status change would
             // re-evaluate the conversation with the Composer.
             MainActorContent { composerChrome }
+                // Its own background, so the fade rides every change of the
+                // Composer's place and height with it: the keyboard, the
+                // input's fold, the strip of work folding over it.
+                .background {
+                    ChatBottomFade(color: themeColors.background)
+                        .ignoresSafeArea(.container, edges: .horizontal)
+                }
                 .keyboardLiftPadding(
                     keyboardInset, restingInset: composerKeyboardLayout.contentInset,
                     isEnabled: composerKeyboardPresentation != .tools)
@@ -695,43 +708,26 @@ struct AgentChatSurfaceView: View {
                     }
                     .scrollBounceBehavior(.basedOnSize)
                 }
-                // The scroll view reaches under the Composer, whose status
-                // row has no background: a placeholder taller than the room
-                // the keyboard leaves ran under it. It still passes under
-                // the header and banners above.
+                // The scroll view reaches under the Composer, whose glass
+                // shows what passes beneath: a placeholder taller than the
+                // room the keyboard leaves ran under it. It still passes
+                // under the header and banners above.
                 .mask(alignment: .bottom) {
                     Rectangle().padding(.top, -(topInset + headerObstruction + bannerHeight))
                 }
                 .padding(.top, headerObstruction + bannerHeight)
             }
-            ChatScrollEdgeEffect(edge: .top, height: topInset + headerObstruction, solid: topInset)
+            ChatScrollEdgeEffect(height: topInset + headerObstruction, solid: topInset)
                 .padding(.top, -topInset)
             banners
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bannerHeight = $0 }
                 .padding(.top, headerObstruction)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Hung from the conversation's bottom edge down to the screen's, so
-        // it never sizes the conversation: as a sibling it could outgrow the
-        // room left above a raised keyboard, push the chrome down and the
-        // measured inset with it, and the two then traded places on every
-        // layout pass until the watchdog ended the app.
-        .overlay(alignment: .bottom) {
-            ChatScrollEdgeEffect(
-                edge: .bottom, height: bottomChromeHeight,
-                solid: bottomChromeHeight - Self.bottomEdgeFadeLength)
-                .alignmentGuide(.bottom) { $0[.top] }
-        }
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { edge in
             bottomEdge.update(
                 edge: edge, keyboardLift: keyboardLift,
                 keyboardIsFalling: keyboardInset.keyboardRideTarget == 0)
-        }
-        // Without the keyboard's part, which is under the keyboard, so this
-        // does not re-evaluate the surface on each frame of its motion.
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { height in
-            let chrome = height - keyboardLift
-            if abs(chrome - bottomChromeHeight) > 0.5 { bottomChromeHeight = chrome }
         }
     }
 
@@ -754,9 +750,6 @@ struct AgentChatSurfaceView: View {
                 .allowsHitTesting(!isHidden)
         }
     }
-
-    /// How far rows fade into the bottom chrome's edge before they blur.
-    private static let bottomEdgeFadeLength: CGFloat = 24
 
     /// The back header's band over the conversation's top edge. Level with
     /// the bar, the header can sit wholly above that edge.
@@ -1015,6 +1008,23 @@ struct AgentChatSurfaceView: View {
                 guard let chat else { throw ChatImagePreviewError.unavailable }
                 return try await chat.readImage(at: path)
             },
+            previewVideo: { [weak chat] path, title in
+                guard let chat else { return }
+                Task { @MainActor in
+                    let resolved = (try? await chat.resolveHostPath(path)) ?? path
+                    let name = RemoteHostPath.lastComponent(of: resolved)
+                    previewedVideo?.discard()
+                    previewedVideo = HostFilePreview(
+                        path: resolved,
+                        name: name.isEmpty ? "video.mp4" : name,
+                        displayTitle: title,
+                        size: nil,
+                        modified: nil,
+                        files: chat.hostFiles,
+                        copies: videoPreviewCopies,
+                        pace: videoPreviewPace)
+                }
+            },
             thumbnails: chat?.thumbnails,
             collapseAvailabilityChanged: { canCollapseTrajectory = $0 },
             previousMessageAvailabilityChanged: { canJumpToPreviousMessage = $0 })
@@ -1184,6 +1194,7 @@ struct AgentChatSurfaceView: View {
             keyboardDismissRequest: composerKeyboardDismissRequest,
             collapsesWithoutKeyboard: true,
             keyboardIsLeaving: keyboardIsLeaving,
+            floatsOverConversation: true,
             interrupt: stopInterrupt)
         .frame(maxWidth: ChatTimelineMetrics.maximumContentWidth)
         .frame(maxWidth: .infinity)
@@ -1894,7 +1905,7 @@ struct AgentChatSurfaceView: View {
             attachLinkCount: 0,
             addImage: offers.attachments ? { isSelectingPhoto = true } : nil,
             pasteImage: offers.attachments
-                ? { composer.enqueueImages([ClipboardImageSelection.current()]) } : nil,
+                ? { session.pasteClipboard() } : nil,
             addFile: offers.attachments ? { isSelectingFile = true } : nil,
             showAttachLinks: {},
             openTerminal: canOpenTerminal
@@ -2153,12 +2164,49 @@ private struct BackgroundWorkInset: View {
     }
 }
 
-/// The list's soft edge under chrome: rows passing beneath the status bar,
-/// the header's controls or the Composer soften behind a thin material
-/// rather than vanish. At full strength for `solid` from the screen's edge,
+/// The conversation's way out at the bottom of the screen, as the background
+/// of the Composer's layer. Rows pass beneath the Composer's glass and fade
+/// into the theme's background as they near the screen's edge: nothing shows
+/// where there are no rows, and no line where they stop. Below the Composer
+/// it is that background down past the screen's edge, however far a keyboard
+/// has raised the Composer. It takes its place and height from the layer it
+/// backs, not from a measurement of it, so it cannot fall a frame behind
+/// and leave the bottom of the screen bare while the chrome changes height.
+private struct ChatBottomFade: View {
+    let color: Color
+
+    /// How much of the background covers rows at the Composer's bottom edge
+    /// and below it.
+    private static let floor: Double = 0.9
+    /// How much covers them near the Composer's middle. Under half the floor,
+    /// so rows keep most of their strength behind the input.
+    private static let middle: Double = 0.36
+    /// Further than any keyboard lifts the Composer; the window clips the rest.
+    private static let tail: CGFloat = 1200
+
+    var body: some View {
+        LinearGradient(
+            stops: [
+                .init(color: color.opacity(0), location: 0),
+                .init(color: color.opacity(Self.middle), location: 0.45),
+                .init(color: color.opacity(Self.floor), location: 1),
+            ],
+            startPoint: .top, endPoint: .bottom)
+        .overlay(alignment: .bottom) {
+            color.opacity(Self.floor)
+                .frame(height: Self.tail)
+                .alignmentGuide(.bottom) { $0[.top] }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+/// The list's soft edge under the chrome over its top: rows passing beneath
+/// the status bar or the header's controls soften behind a thin material
+/// rather than vanish. At full strength for `solid` from the screen's top,
 /// then fading out across the rest of `height`.
 private struct ChatScrollEdgeEffect: View {
-    let edge: VerticalEdge
     let height: CGFloat
     let solid: CGFloat
     /// How much of the material shows at full strength: rows stay visible
@@ -2175,8 +2223,7 @@ private struct ChatScrollEdgeEffect: View {
                         .init(color: .black.opacity(strength), location: height > 0 ? min(1, max(0, solid / height)) : 1),
                         .init(color: .clear, location: 1),
                     ],
-                    startPoint: edge == .top ? .top : .bottom,
-                    endPoint: edge == .top ? .bottom : .top)
+                    startPoint: .top, endPoint: .bottom)
             }
             .frame(height: height)
             .allowsHitTesting(false)
