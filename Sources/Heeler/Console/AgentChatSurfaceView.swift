@@ -132,6 +132,7 @@ struct AgentChatSurfaceView: View {
     @Environment(\.themeColors) private var themeColors
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.portPreviewOpener) private var portPreview
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.sceneWindow) private var sceneWindow
@@ -471,7 +472,7 @@ struct AgentChatSurfaceView: View {
         }
         // The transcript records the mode as snapshots, and not every change
         // (plan approval moves to auto unrecorded); the footer shows it live.
-        .task(id: "\(agent.agent.status)-\(chat?.conversationGeneration ?? 0)-\(console.hostConnectionGenerations[agent.hostID] ?? 0)-\(console.isHostReadyForInput(agent.hostID))") {
+        .task(id: "\(agent.agent.status)-\(chat?.agent.status.rawValue ?? "")-\(chat?.conversationGeneration ?? 0)-\(console.hostConnectionGenerations[agent.hostID] ?? 0)-\(console.isHostReadyForInput(agent.hostID))") {
             await readSessionSettingsFromScreen()
         }
         .task(id: "\(program)-\(console.hostConnectionGenerations[agent.hostID] ?? 0)-\(console.isHostReadyForInput(agent.hostID))") {
@@ -983,7 +984,7 @@ struct AgentChatSurfaceView: View {
         // Work that has shown no sign of itself for hours keeps no turn open.
         // Use the Host's underlying foreground activity so a completed or
         // earlier interrupted turn does not sprout a foreground Working timer
-        // while Antigravity CLI's Background Work promotes the Console row.
+        // while Background Work promotes the Console row.
         let signals = ChatTurnSignals(
             activity: ChatAgentActivity(chat.agent.status),
             isBackgroundWorkRunning: chat.isBackgroundWorkRunningForTurns,
@@ -1027,6 +1028,12 @@ struct AgentChatSurfaceView: View {
                 }
             },
             thumbnails: chat?.thumbnails,
+            openHostLink: { [portPreview] link in
+                guard let portPreview, portPreview.accepts(link) else { return false }
+                // With the keyboard down, as Files opens.
+                composerKeyboardDismissRequest += 1
+                return portPreview.open(link)
+            },
             collapseAvailabilityChanged: { canCollapseTrajectory = $0 },
             previousMessageAvailabilityChanged: { canJumpToPreviousMessage = $0 })
     }
@@ -1438,7 +1445,9 @@ struct AgentChatSurfaceView: View {
         switch program {
         case .claude:
             session.settingOverrides.refreshPermissionLaunch(nil, liveMode: nil)
-            guard status == .idle || status == .done, console.isHostReadyForInput(agent.hostID) else { return }
+            let foregroundStatus = chat?.agent.status ?? status
+            guard foregroundStatus == .idle || foregroundStatus == .done, console.isHostReadyForInput(agent.hostID)
+            else { return }
             await waitForInitialTranscriptLoad()
             guard !Task.isCancelled, !isSwitchingSetting, isOnStage(),
                 console.isHostReadyForInput(agent.hostID)
@@ -2088,6 +2097,13 @@ struct AgentChatSurfaceView: View {
                 // the message. So Files opens with the keyboard down.
                 composerKeyboardDismissRequest += 1
                 showFiles()
+            })
+        }
+        if let portPreview, portPreview.isOffered {
+            actions.append(AgentDetailHeaderAction(title: "Ports", systemImage: PortPreviewCopy.symbol) {
+                // With the keyboard down, as Files opens.
+                composerKeyboardDismissRequest += 1
+                portPreview.showPorts()
             })
         }
         if console.offersTitleRename(for: agent) {
