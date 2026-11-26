@@ -14,6 +14,9 @@ struct AgentChatSource: Sendable {
     let agentInfo: @Sendable () async throws -> Agent
     let cache: any ChatTranscriptCache
     let adapter: ChatTranscriptAdapter
+    /// Where images Chat reads whole from the Host are kept, so showing one
+    /// again does not read it again; nil keeps none.
+    var fileCache: HostFileCache? = nil
     /// Looks up only a saved binding for this exact Agent identity, waiting
     /// for the local directory to load. It never confirms a live session.
     var cachedSession: @Sendable (Agent) async -> AgentSessionInfo? = { _ in nil }
@@ -39,6 +42,13 @@ struct AgentChatSource: Sendable {
     /// Notifies listeners when a Chat becomes visible so in-flight background
     /// prefetches of other Agents on the same Host can yield the SFTP channel.
     var onDidBecomeVisible: (@MainActor @Sendable () -> Void)? = nil
+    /// Notifies listeners when a visible Chat begins a network poll/open step so
+    /// in-flight background prefetches yield SFTP immediately.
+    var onWillPerformVisibleRead: (@MainActor @Sendable () -> Void)? = nil
+    /// Yields hidden background-work loops while a foreground Chat is reading.
+    var yieldToVisibleChat: (@MainActor @Sendable () async -> Void)? = nil
+    /// Whether any Chat on this Host is currently visible on screen.
+    var hasVisibleChatOnHost: (@MainActor @Sendable () -> Bool)? = nil
 }
 
 /// What a confirmed candidate goes through, keeping to the detail's core.
@@ -87,6 +97,16 @@ enum ChatCandidatePreview: Equatable, Sendable {
 @MainActor
 @Observable
 final class AgentChatStore {
+    var ampConnection: AmpChatConnection? { source.files.amp }
+    private var ampBinding: AmpChatTarget?
+
+    var displayedAmpBinding: AmpChatTarget? {
+        guard isHostConnected, !conversation.isFromCache, conversation.readFailure == nil,
+            case .following(let path) = conversation.phase, let target = ampBinding,
+            let thread = target.binding.thread, path == AmpRecordSource(thread: thread).path,
+            followed?.sessionID == thread else { return nil }
+        return target
+    }
     struct Timing: Sendable {
         var activeInterval: Duration = .seconds(1)
         var idleInterval: Duration = .seconds(4)
@@ -248,6 +268,10 @@ final class AgentChatStore {
         return false
     }
 
+    @ObservationIgnored private(set) var isPerformingVisibleStep = false
+    @ObservationIgnored private var isRunningUnviewedPrefetch = false
+    @ObservationIgnored private var warmedPrefetchKey: (generation: Int, revision: Int)?
+
     /// Whether a live read on a connected Host shows non-stale Background Work
     /// or Swarm task workers still running.
     var hasRunningBackgroundWork: Bool {
@@ -319,6 +343,8 @@ final class AgentChatStore {
     /// that an event, the user or opening Chat asked for.
     @ObservationIgnored private var unannouncedEvidenceChecksTaken = 0
     @ObservationIgnored private let source: AgentChatSource
+    /// Where this Agent's images are kept, as `source.fileCache` allows.
+    @ObservationIgnored private let keptFiles: ChatImagePreviewReader.Kept?
     @ObservationIgnored private let dismissedLaunchNotices: ChatLaunchNoticeDismissalStore
     /// The pane as a Blocked card types into it: on a herdr-core Host, each
     /// step only while the process read last still holds the terminal.
@@ -571,7 +597,11 @@ final class AgentChatStore {
         self.dismissedLaunchNotices = dismissedLaunchNotices
         self.dismissedLaunchNotice = dismissedLaunchNotices.dismissedNotice(
             hostID: source.hostID, terminalID: agent.terminalID)
-        thumbnails = ChatImageThumbnails(source: .init(files: source.files))
+        let keptFiles = source.fileCache.map {
+            ChatImagePreviewReader.Kept(cache: $0, hostID: source.hostID, opener: agent.terminalID)
+        }
+        self.keptFiles = keptFiles
+        thumbnails = ChatImageThumbnails(source: .init(files: source.files, kept: keptFiles))
         self.timing = timing
         self.now = now
         let resolution = ConversationReference.resolve(agent.agentSession)
@@ -598,12 +628,17 @@ final class AgentChatStore {
             consecutiveAgentRefreshLinkFailures = 0
             // Background prefetches back off looking for a missing
             // transcript; opening Chat looks at once and backs off afresh.
-            switch conversation.phase {
-            case .locating, .unavailable(.notFound):
+            if conversation.readFailure != nil {
                 nextOpen = nil
                 failedOpens = 0
-            default:
-                break
+            } else {
+                switch conversation.phase {
+                case .locating, .unavailable(.notFound):
+                    nextOpen = nil
+                    failedOpens = 0
+                default:
+                    break
+                }
             }
         }
         viewers.insert(viewer)
@@ -658,6 +693,7 @@ final class AgentChatStore {
     func end() {
         viewers.removeAll()
         isVisible = false
+        warmedPrefetchKey = nil
         stopLoop()
         timeline.reset()
         swarmBoard.reset()
@@ -671,6 +707,9 @@ final class AgentChatStore {
 
     private func warmTimelineFromPrefetch() async {
         guard !isVisible, !conversation.transcript.entries.isEmpty else { return }
+        if source.hasVisibleChatOnHost?() == true { return }
+        let key = (generation: conversationGeneration, revision: conversation.revision)
+        if let warmedPrefetchKey, warmedPrefetchKey == key { return }
         let transcript = conversation.transcript
         let markedEntries = outputs.marking(blocked.history.marking(transcript.entries))
         let foldsFinishedTurns =
@@ -691,6 +730,7 @@ final class AgentChatStore {
             signals: signals,
             isReady: isReady)
         await timeline.settled()
+        warmedPrefetchKey = key
     }
 
     /// Warms the local document once after a fresh Host snapshot, without
@@ -721,7 +761,9 @@ final class AgentChatStore {
             if !Task.isCancelled {
                 // Warming is for the newest rows.
                 self.pollsBeforeNextOlderPage = true
+                self.isRunningUnviewedPrefetch = !self.isVisible
                 await self.step()
+                self.isRunningUnviewedPrefetch = false
                 await self.engine?.save(force: true)
                 if !Task.isCancelled {
                     await self.warmTimelineFromPrefetch()
@@ -751,12 +793,13 @@ final class AgentChatStore {
     /// thumbnails come from ``thumbnails``. A path a message names may be
     /// relative to the Agent's directory or start at `~` (`ChatImageLink`).
     func readImage(at path: String) async throws -> Data {
-        try await ChatImagePreviewReader.read(path: try await resolveHostPath(path), files: source.files)
+        try await ChatImagePreviewReader.read(
+            path: try await resolveHostPath(path), files: source.files, kept: keptFiles)
     }
 
-    func resolveHostPath(_ path: String) async throws -> String {
+    func resolveHostPath(_ path: String, files: ChatHostFiles? = nil) async throws -> String {
         if path.hasPrefix("/") { return path }
-        let home = path.hasPrefix("~/") ? try await source.files.home() : nil
+        let home = path.hasPrefix("~/") ? try await (files ?? source.files).home() : nil
         let directory = agent.foregroundCwd.flatMap { $0.isEmpty ? nil : $0 } ?? agent.cwd
         guard let resolved = ChatImagePath.resolve(path, cwd: directory, home: home) else {
             throw ChatImagePreviewError.invalidPath
@@ -838,12 +881,18 @@ final class AgentChatStore {
             consecutiveAgentRefreshLinkFailures = 0
             needsAgentRefresh = true
         }
-        switch conversation.phase {
-        case .locating, .unavailable(.notFound):
+        if conversation.readFailure != nil {
             nextOpen = nil
             failedOpens = 0
-        default:
-            break
+            timedOutReads = 0
+        } else {
+            switch conversation.phase {
+            case .locating, .unavailable(.notFound):
+                nextOpen = nil
+                failedOpens = 0
+            default:
+                break
+            }
         }
         sessionEvidenceMayHaveChanged()
         refreshCodexModelCatalogIfNeeded()
@@ -1133,8 +1182,14 @@ final class AgentChatStore {
     /// worked, a few reads of Workflow journals. Internal for tests, which
     /// drive turns directly.
     func step() async {
+        let runningVisible = isVisible
+        if runningVisible {
+            isPerformingVisibleStep = true
+            source.onWillPerformVisibleRead?()
+        }
         let retries = retryRequests
         defer {
+            if runningVisible { isPerformingVisibleStep = false }
             if isRetrying, retries == retryRequests, !Task.isCancelled { isRetrying = false }
         }
         await restoreIfNeeded()
@@ -1246,23 +1301,36 @@ final class AgentChatStore {
         if olderRequest == nil, program == .claude, polled || opened,
             case .following = snapshot.phase, snapshot.readFailure == nil
         {
-            let commandOutputs = await engine.followClaudeCommandOutputs()
-            if engine === self.engine { claudeCommandEvidence = commandOutputs }
-            let teammates = await engine.followClaudeTeammates()
-            if engine === self.engine {
-                claudeTeammateEvidence = stampingEndPromptOffsets(teammates, previous: claudeTeammateEvidence)
+            if snapshot.transcript.backgroundWork.contains(where: { $0.kind == .command })
+                || !claudeCommandEvidence.isEmpty
+            {
+                let commandOutputs = await engine.followClaudeCommandOutputs()
+                if engine === self.engine { claudeCommandEvidence = commandOutputs }
+            }
+            if !snapshot.readsFromStart
+                || snapshot.transcript.backgroundWork.contains(where: { $0.kind == .teammate })
+                || !claudeTeammateEvidence.isEmpty
+            {
+                let teammates = await engine.followClaudeTeammates()
+                if engine === self.engine {
+                    claudeTeammateEvidence = stampingEndPromptOffsets(teammates, previous: claudeTeammateEvidence)
+                }
             }
         }
         if olderRequest == nil, program == .agy, polled || opened,
             case .following = snapshot.phase, snapshot.readFailure == nil
         {
-            let fileEvidence = await engine.followAgyBackgroundWork()
-            if engine === self.engine {
-                agyFileEvidence = stampingEndPromptOffsets(fileEvidence, previous: agyFileEvidence)
+            if !snapshot.transcript.backgroundWork.isEmpty || !agyFileEvidence.isEmpty {
+                let fileEvidence = await engine.followAgyBackgroundWork()
+                if engine === self.engine {
+                    agyFileEvidence = stampingEndPromptOffsets(fileEvidence, previous: agyFileEvidence)
+                }
             }
-            let swarm = await engine.followAgySwarm()
-            if engine === self.engine {
-                rawAgySwarm = swarm
+            if snapshot.transcript.hasSwarmActivity || !snapshot.readsFromStart || rawAgySwarm != nil {
+                let swarm = await engine.followAgySwarm()
+                if engine === self.engine {
+                    rawAgySwarm = swarm
+                }
             }
         }
         guard !Task.isCancelled, engine === self.engine, !isAwaitingSession else { return }
@@ -1330,6 +1398,10 @@ final class AgentChatStore {
             }
             while !Task.isCancelled {
                 guard let self, self.shouldRunLoop else { break }
+                if !self.isVisible {
+                    await self.source.yieldToVisibleChat?()
+                    guard !Task.isCancelled, self.shouldRunLoop else { break }
+                }
                 self.isWatchingWhileHidden = !self.isVisible
                 await self.step()
                 guard !Task.isCancelled, self.shouldRunLoop else { break }
@@ -1432,13 +1504,15 @@ final class AgentChatStore {
     // MARK: Session
 
     private var sessionRecheckIsDue: Bool {
-        guard source.sessionEvidence == nil else { return false }
+        if agentRefreshFailure != nil {
+            guard let lastAgentRefresh else { return true }
+            return now().timeIntervalSince(lastAgentRefresh) >= timing.sessionRecheck
+        }
+        guard source.sessionEvidence == nil || (program == .amp && isVisible) else { return false }
         let interval: TimeInterval
-        if engine == nil || isUnavailable || agentRefreshFailure != nil
-            || consecutiveAgentRefreshLinkFailures > 0
-        {
+        if engine == nil || isUnavailable || consecutiveAgentRefreshLinkFailures > 0 {
             interval = timing.sessionRecheck
-        } else if isVisible, ChatAgentActivity(agent.status) == .idle {
+        } else if isVisible, program == .amp || ChatAgentActivity(agent.status) == .idle {
             interval = timing.idleSessionRecheck
         } else {
             return false
@@ -1456,6 +1530,10 @@ final class AgentChatStore {
         let recordRevision = sessionRecordRevision
         do {
             if let sessionEvidence = source.sessionEvidence {
+                if isRunningUnviewedPrefetch, !isVisible, agent.agentSession == nil, engine == nil {
+                    needsAgentRefresh = true
+                    return nil
+                }
                 let evidence = try await sessionEvidence()
                 guard !Task.isCancelled, recordRevision == sessionRecordRevision else { return nil }
                 agentRefreshFailure = nil
@@ -1518,6 +1596,13 @@ final class AgentChatStore {
     /// Follows what a check of the Agent's process found, as `adoptRecord` does
     /// a herdr record.
     private func adoptEvidence(_ evidence: ChatSessionEvidence) {
+        if let amp = source.files.amp {
+            if let before = ampBinding, let after = amp.current, before != after,
+                before.binding.thread == after.binding.thread {
+                adopt(.noSession)
+            }
+            ampBinding = amp.current
+        }
         switch evidence {
         case .bound(let sessionID, let transcriptRoot, let directory):
             forgetPick()
@@ -2304,7 +2389,8 @@ final class AgentChatStore {
 
     private func apply(_ snapshot: ChatConversationSnapshot, from origin: ChatConversationEngine) {
         // A session switch may have replaced the engine during the read.
-        guard origin === engine, snapshot.revision != appliedRevision,
+        guard origin === engine,
+            snapshot.revision != appliedRevision || snapshot.readFailure != transcriptReadFailure,
             !isAwaitingSession || snapshot.isFromCache
         else { return }
         let span = PerfTrace.begin("chat.store.apply")
@@ -3288,7 +3374,7 @@ extension ChatProgram {
         case .claude, .codex, .grok: false
         // OpenCode 2.0.32's Esc interrupt resumes: a steer still waiting
         // runs after the stop rather than coming back to the box.
-        case .opencode: false
+        case .opencode, .amp: false
         }
     }
 
@@ -3301,7 +3387,7 @@ extension ChatProgram {
         case .pi, .omp, .grok, .opencode: true
         // Antigravity CLI 1.5.3 records `/compact` as a prompt and then its
         // checkpoint; a refused one was not observed.
-        case .claude, .codex, .agy: false
+        case .claude, .codex, .agy, .amp: false
         }
     }
 
@@ -3315,7 +3401,7 @@ extension ChatProgram {
     var declinesCompactOnScreen: Bool {
         switch self {
         case .pi, .omp, .grok: true
-        case .claude, .codex, .opencode, .agy: false
+        case .claude, .codex, .opencode, .agy, .amp: false
         }
     }
 
@@ -3328,7 +3414,7 @@ extension ChatProgram {
     var offersKeysWhenBlockedWithoutDialog: Bool {
         switch self {
         case .claude, .codex, .pi, .omp, .grok, .agy: true
-        case .opencode: false
+        case .opencode, .amp: false
         }
     }
 
@@ -3341,7 +3427,7 @@ extension ChatProgram {
     /// Herdr TUI only: a core has no record to re-read (ADR 0034).
     var leavesSessionWithoutReport: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .grok, .agy: false
+        case .claude, .codex, .pi, .omp, .grok, .agy, .amp: false
         case .opencode: true
         }
     }
@@ -3352,7 +3438,7 @@ extension ChatProgram {
     /// needs the program's terminal title in the check.
     var confirmsSessionBeforeSend: Bool {
         switch self {
-        case .claude, .codex, .pi, .omp, .grok, .agy: false
+        case .claude, .codex, .pi, .omp, .grok, .agy, .amp: false
         case .opencode: true
         }
     }
@@ -3363,7 +3449,7 @@ extension ChatProgram {
     var mayShareSessionServer: Bool {
         switch self {
         case .codex: true
-        case .claude, .pi, .omp, .grok, .opencode, .agy: false
+        case .claude, .pi, .omp, .grok, .opencode, .agy, .amp: false
         }
     }
 }
