@@ -52,7 +52,11 @@ program reports nothing to Rex reads Unknown and has no Stop and no Blocked
 Card. Where Chat is
 offered, its Agents take images and files too, staged over the Host's SSH
 connection as on the other Server Kinds. A Rex Host offers no notifications,
-Live Activities, Usage, Changes or New Agent (ADR 0056).
+Live Activities, Usage, Changes or New Agent (ADR 0056). New Terminal starts
+a shell in a new window of a Workspace's session, left in the background, and
+New Workspace a new session holding one, the only things Heeler starts on a
+Rex server; it gives the new terminal's size back at once (ADR 0049's update
+of 2026-11-25).
 Every build offers it; the user guide and the changelog call it experimental
 (ADR 0049). One control connection follows the whole server: every session's
 terminals, kept current by Rex's events and read again after any new
@@ -526,8 +530,9 @@ answers keep the rules above, but type through an attach of Chat's own, open
 only for that action, that keeps the Terminal's size, with the Composer's checked
 steps, and read the
 screen from an observing attach's first paint (ADR 0035).
-On Rex, for Claude Code, Codex, Pi and Oh My Pi only, Chat binds the
-conversation as on herdr-core, from what the Host's SSH connection reads
+On Rex, for Claude Code, Codex, Pi and Oh My Pi only (on native Windows,
+Claude Code alone), Chat binds the conversation as on herdr-core, from what
+the Host's SSH connection reads
 about the foreground process Rex names, and keeps a choice on this device. A
 Pi or Oh My Pi there is bound from a file Heeler's extension keeps for its
 process, where a label holds it on herdr-core. Its Send, Stop and
@@ -618,7 +623,8 @@ signed in to on one Host, across repositories, as one list under a row of
 filters: State, Person, Repository and Label, kept for each of the two on the
 device. At their defaults it holds the open ones that involve the account:
 pull requests the user opened or whose review is asked of them, issues
-assigned to the user or opened by them. Heeler reads it by running gh over the
+assigned to the user or opened by them. With a Repository chosen, Person
+defaults to Anyone: everyone's open items there. Heeler reads it by running gh over the
 Host's connection and never holds the account's token; on a Mac whose SSH
 session cannot read the login keychain, gh runs once in the desktop session
 instead. It is read for one Host at a time, a Host and not a Server, kept on
