@@ -4,6 +4,7 @@ Agents in the Herdr desktop app belong to herdr-core, a server separate from Her
 
 ## Before you start
 
+- [Heeler](https://apps.apple.com/app/id6797263135) installed on your iPhone or iPad.
 - Remote Login turned on for the Mac and its SSH fingerprint noted: [Prepare the Host](overlay-networks.md#prepare-the-host). On Linux, run OpenSSH. On Windows, follow [Windows setup](windows-setup.md).
 - The Herdr desktop app running on the Mac, or herdr-core running on Linux or [native Windows](#native-windows).
 - A way for your phone to reach the Mac: directly on the same network, or over an [overlay network](overlay-networks.md). A Host can have [multiple routes](host-routes.md).
@@ -118,6 +119,8 @@ In **Chat**, you can read conversations, send messages, stop a turn, and answer 
 | Program | Session notes |
 | --- | --- |
 | Claude Code | Opens on macOS, Linux, and Windows. Binds at its prompt and follows `/clear` and `/resume`. |
+| Devin CLI | On macOS and Linux, open a [local Devin session](chat.md#devin-cli) with a foreground ACP writer. The Host needs Python 3. |
+| Droid | On macOS and Linux, **New Agent** supplies the [Droid hook](chat.md#droid). Chat follows the conversation in this terminal. |
 | Codex | Opens on macOS and Linux. Binds on the first message when started with `--no-daemon`. |
 | Grok Build | Opens on macOS, Linux, and Windows. Binds while Grok Build's process lists one conversation. After `/new`, restart or use **Choose a Conversation** on macOS and Linux. |
 | Pi | Opens on macOS, Linux, and Windows. Binds with the [Host Helper](#host-helper), on Windows with Heeler's extension, or when Heeler started it. Otherwise use **Choose a Conversation**. |

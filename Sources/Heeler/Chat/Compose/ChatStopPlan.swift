@@ -6,7 +6,11 @@ import Foundation
 struct ChatStopContext: Sendable {
     var screen: ANSIScreen
     var activity: ChatAgentActivity
+    /// The same unfinished transcript turn was just read on its bound Pane.
+    var hasVerifiedTurn = false
 }
+
+typealias ChatStopVerification = @MainActor () async -> Bool
 
 /// A Stop guard's answer for the screen it read.
 enum ChatStopVerdict: Equatable, Sendable {
@@ -39,6 +43,13 @@ struct ChatStopPlan: Sendable {
     static func standard(for program: ChatProgram) -> ChatStopPlan {
         switch program {
         case .claude, .codex, .pi, .omp, .amp: .escape
+        case .devin:
+            ChatStopPlan(keys: ["esc", "esc"], screenGuard: DevinInputBox.stop, wait: .escape,
+                         accessibilityHint: String(localized: "Presses Esc twice to interrupt Devin"))
+        case .droid:
+            ChatStopPlan(
+                keys: ["esc"], screenGuard: DroidInputBox.stop, wait: .escape,
+                accessibilityHint: AgentComposerInterrupt.escapeHint)
         case .agy:
             // Antigravity CLI's Esc stops the turn, from a dialog too, and
             // puts a queued message back in the box. At an idle box it
@@ -110,10 +121,11 @@ struct ChatStopPlan: Sendable {
     @MainActor func composerInterrupt(
         context: @escaping @MainActor () async throws -> ChatStopContext,
         agentKeys: ChatAgentKeysStore,
-        followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil
+        followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil,
+        confirmTarget: ChatStopVerification? = nil
     ) -> AgentComposerInterrupt {
         let keys = keys
-        let check = screenGuard.map { Self.check($0, context: context) }
+        let check = screenGuard.map { Self.check($0, context: context, confirmTarget: confirmTarget) }
         return AgentComposerInterrupt(wait: wait, accessibilityHint: accessibilityHint) {
             let after = followThrough?()
             switch await agentKeys.deliver(keys, unless: check) {
@@ -130,9 +142,11 @@ struct ChatStopPlan: Sendable {
     /// to press.
     @MainActor private static func check(
         _ screenGuard: @escaping @Sendable (ChatStopContext) -> ChatStopVerdict,
-        context: @escaping @MainActor () async throws -> ChatStopContext
+        context: @escaping @MainActor () async throws -> ChatStopContext,
+        confirmTarget: ChatStopVerification?
     ) -> @MainActor () async -> String? {
         {
+            if let confirmTarget, !(await confirmTarget()) { return changedDroidTurn }
             guard let stopContext = try? await context() else { return unreadableScreenMessage }
             switch screenGuard(stopContext) {
             case .press: return nil
@@ -140,4 +154,6 @@ struct ChatStopPlan: Sendable {
             }
         }
     }
+
+    static let changedDroidTurn = String(localized: "The active turn could not be verified. Check the current conversation before stopping it.")
 }

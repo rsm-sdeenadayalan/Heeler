@@ -94,6 +94,13 @@ enum ComposerRefusal: Equatable, Sendable {
 /// program, checks the Agent's input box first, and never touches the PTY.
 struct ComposerDeliveryPolicy: Sendable {
     var route: ComposerRoute
+    var requiresSinglePrompt = false
+    var droidTarget: (@Sendable () async throws -> DroidDialogTarget?)?
+    var checkedProgram: ChatProgram = .droid
+    var displayedDroidTarget: (@MainActor () -> DroidDialogTarget?)?
+    var droidScreen: (@MainActor @Sendable () async throws -> ANSIScreen)?
+    var requiresSpec = false
+    private(set) var droidWrite: DroidSendVerification?
     /// Terminal types a Blocked draft into the Attach PTY without Enter.
     var insertsIntoAttachWhenBlocked: Bool
     /// What `agent.prompt` sends for the typed text.
@@ -124,6 +131,19 @@ struct ComposerDeliveryPolicy: Sendable {
     static let terminal = ComposerDeliveryPolicy(
         route: .terminal, insertsIntoAttachWhenBlocked: true, outgoingText: { $0 },
         validate: { _ in nil }, preflight: nil, verify: nil)
+
+    @MainActor mutating func prepare(_ text: String, for session: String?) async -> ComposerRefusal? {
+        if requiresSinglePrompt {
+            let shown = displayedDroidTarget?()
+            guard let session, let droidTarget, let droidScreen,
+                  let target = try? await droidTarget(), target.draftID(for: checkedProgram) == session,
+                  displayedDroidTarget == nil || shown == target else {
+                return .inputNotReady(checkedProgram.draftOwnerGuidance)
+            }
+            droidWrite = DroidSendVerification(target: target, readTarget: droidTarget, readScreen: droidScreen, requiresSpec: requiresSpec, program: checkedProgram)
+        }
+        return await preflight?(text)
+    }
 
     /// Prepends a guard that runs before both the regular preflight and the
     /// Send Anyway unconfirmed-input-box preflight.

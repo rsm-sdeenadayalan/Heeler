@@ -80,13 +80,23 @@ private struct BlockedDialogCard: View {
     }
 
     private var dialog: BlockedDialog { card.dialog }
-    private var isReady: Bool { store.progress == .ready }
+    private var isReady: Bool {
+        store.progress == .ready && (!dialog.program.pinsComposerToSession || (card.target != nil
+            && ([.devinWorkspaceTrust, .droidWorkspaceTrust].contains(dialog.kind) || card.request?.callID != nil)))
+    }
     private var hasText: Bool { !text.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var headerDetail: String? {
+        if dialog.kind == .devinQuestion, let questions = card.request?.questions, questions.count > 1,
+           let index = questions.firstIndex(where: { $0.text == dialog.subject.question }) {
+            return String(localized: "\(index + 1) of \(questions.count)")
+        }
+        return dialog.positionLabel ?? dialog.pageLabel
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             BlockedCardHeader(
-                symbol: dialog.symbol, title: dialog.cardTitle, detail: dialog.positionLabel ?? dialog.pageLabel,
+                symbol: dialog.symbol, title: dialog.cardTitle, detail: headerDetail,
                 isActing: store.progress == .acting,
                 lineLimit: dialog.asksInTitle ? nil : 2, collapse: { store.isCollapsed = true })
             BlockedScrollingContent(maxHeight: scrollingMaxHeight) {
@@ -138,7 +148,7 @@ private struct BlockedDialogCard: View {
     /// a phone, where the folder and the program's warning fill the card's
     /// share. The text gives up their room, so the card stays as tall.
     private var pinsChoices: Bool {
-        [.claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust].contains(dialog.kind)
+        [.claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust, .devinWorkspaceTrust, .droidWorkspaceTrust].contains(dialog.kind)
     }
 
     private var scrollingMaxHeight: CGFloat {
@@ -165,6 +175,22 @@ private struct BlockedDialogCard: View {
     private var content: some View {
         let subject = dialog.subject
         switch dialog.kind {
+        case .devinPermission, .droidPermission:
+            BlockedCodeBox(text: card.request?.summary ?? subject.command ?? subject.filePath ?? "",
+                           isCommand: subject.command != nil)
+            if let patch = card.patch {
+                BlockedChangeBox(lines: patch.components(separatedBy: "\n"), marksChanges: true)
+            }
+            if let change = card.request?.fileChanges?.files.first {
+                BlockedChangeBox(lines: change.hunks.flatMap(\.lines), marksChanges: true)
+                if !change.isComplete { Text("Diff excerpt").font(.caption).foregroundStyle(.secondary) }
+            } else if !subject.changeLines.isEmpty {
+                BlockedChangeBox(lines: subject.changeLines, marksChanges: true)
+            }
+        case .devinQuestion, .droidQuestion, .droidQuestionReview:
+            BlockedCardText(dialog.body.joined(separator: "\n"))
+        case .devinPlan, .droidSpec, .droidSpecAutonomy, .droidSpecFeedback:
+            BlockedPlanBox(text: card.request?.summary ?? dialog.body.joined(separator: "\n"))
         case .claudeBash:
             if let description = card.request?.detail ?? subject.commandDescription {
                 BlockedCardText(description)
@@ -231,7 +257,8 @@ private struct BlockedDialogCard: View {
                 }
             }
             .padding(.horizontal, 2)
-        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust:
+        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust, .devinWorkspaceTrust, .droidWorkspaceTrust:
+            if [.devinWorkspaceTrust, .droidWorkspaceTrust].contains(dialog.kind), let host = store.hostName { BlockedCardText(host) }
             BlockedCodeBox(text: subject.workspacePath ?? "")
             // Codex's note on a folder below a repository's root, then the
             // root.
@@ -648,7 +675,7 @@ private struct BlockedDialogCard: View {
             noteEntry
         case .claudeQuestion where dialog.subject.showsPreviews:
             previewAnswer
-        case .claudeQuestion, .agyQuestion:
+        case .claudeQuestion, .agyQuestion, .devinQuestion, .droidQuestion, .droidSpecFeedback:
             // agy's `Write-in...` names a row, not what to type: its fields
             // say what the form's pages say. Claude's card keeps the row
             // label Claude draws.
@@ -663,7 +690,7 @@ private struct BlockedDialogCard: View {
             {
                 HStack(spacing: 8) {
                     BlockedTextField(
-                        placeholder: dialog.kind == .agyQuestion
+                        placeholder: [.agyQuestion, .devinQuestion].contains(dialog.kind)
                             ? String(localized: "Type your own answer") : field.label,
                         text: $text, isFocused: $isTextFocused)
                     Button("Send") { perform(.respond(ordinal: field.ordinal, text: text)) }
@@ -795,7 +822,7 @@ private struct BlockedDialogCard: View {
 
     private func perform(_ action: DialogAction) {
         isTextFocused = false
-        Task { await store.perform(action) }
+        Task { await store.perform(action, shownCard: card) }
     }
 }
 
@@ -851,9 +878,9 @@ private struct BlockedCollapsedBar: View {
 
     @ViewBuilder
     private var buttons: some View {
-        if let dialog, dialog.canStop {
-            Button(dialog.stopTitle, role: .destructive) {
-                Task { await store.perform(.dismiss) }
+        if case .card(let shown) = store.content, shown.dialog.canStop {
+            Button(shown.dialog.stopTitle, role: .destructive) {
+                Task { await store.perform(.dismiss, shownCard: shown) }
             }
             .buttonStyle(.borderless)
             .disabled(!store.canStop)
@@ -909,7 +936,11 @@ extension DialogOption {
         case .agy where folded.contains(DialogRowScanner.comparable("in this conversation")):
             return String(
                 localized: "Antigravity CLI won't ask again in this conversation for commands that start this way.")
-        case .claude, .codex, .pi, .agy, .amp:
+        case .devin:
+            if label.hasSuffix("Session") { return String(localized: "Allows this rule for the current Devin session.") }
+            if label.hasSuffix("Project") { return String(localized: "Saves this permission for the project.") }
+            return String(localized: "Saves this permission for future Devin sessions.")
+        case .claude, .codex, .pi, .agy, .droid, .amp:
             return String(localized: "Saves a rule, so this isn't asked again.")
         case .opencode:
             return String(localized: "Saves an OpenCode rule for this project that can allow more than this request.")
@@ -929,7 +960,7 @@ private extension BlockedDialog {
     var cardTitle: String {
         switch kind {
         case .claudeQuestion, .codexQuestion, .codexAsyncQuestion, .ompQuestion, .grokQuestion, .openCodeQuestion,
-            .agyQuestion:
+            .agyQuestion, .devinQuestion:
             String(localized: "Question")
         case .codexAsyncCollapsed: String(localized: "Questions")
         case .ompApproval: subject.toolName.map { String(localized: "Allow \($0)") } ?? String(localized: "Allow Tool")
@@ -978,13 +1009,13 @@ extension BlockedDialog {
         case .claudeFileEdit, .claudeFileCreate, .codexPatch, .agyFileEdit, .agyFileCreate: "pencil"
         case .claudeFileRead: "doc.text"
         case .claudeFetch, .codexNetwork: "globe"
-        case .claudePlan: "list.bullet"
+        case .claudePlan, .devinPlan, .droidSpec, .droidSpecAutonomy, .droidSpecFeedback: "list.bullet"
         case .claudeQuestion, .claudeQuestionReview, .codexQuestion, .codexAsyncCollapsed, .codexAsyncQuestion,
-            .ompQuestion, .ompQuestionReview, .grokQuestion, .openCodeQuestion, .agyQuestion:
+            .ompQuestion, .ompQuestionReview, .grokQuestion, .openCodeQuestion, .agyQuestion, .devinQuestion, .droidQuestion, .droidQuestionReview:
             "questionmark.circle"
-        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust: "folder"
+        case .claudeWorkspaceTrust, .codexWorkspaceTrust, .agyWorkspaceTrust, .devinWorkspaceTrust, .droidWorkspaceTrust: "folder"
         case .grokCancelTurn, .grokFork: "arrow.triangle.branch"
-        case .ompApproval, .grokPermission, .openCodePermission:
+        case .ompApproval, .grokPermission, .openCodePermission, .devinPermission, .droidPermission:
             subject.command != nil ? "terminal" : subject.filePath != nil ? "doc.text" : "hand.raised"
         }
     }
@@ -1005,6 +1036,7 @@ extension BlockedDialog {
         case .ompApproval, .grokPermission: String(localized: "Deny")
         case .openCodePermission: String(localized: "Reject")
         case .openCodeQuestion: String(localized: "Dismiss")
+        case .devinQuestion: String(localized: "Cancel Question")
         case .agyQuestion:
             String(localized: "Skip", comment: "On an Antigravity CLI question card: skips the question shown")
         default: String(localized: "Stop")

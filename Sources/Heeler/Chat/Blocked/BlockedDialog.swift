@@ -64,6 +64,10 @@ enum BlockedDialogKind: String, Sendable, Hashable, CaseIterable {
     /// prompt: `Yes, I trust this folder`, or `No, exit`.
     case agyWorkspaceTrust
 
+    case devinWorkspaceTrust, devinPermission, devinQuestion, devinPlan
+    case droidWorkspaceTrust, droidPermission, droidQuestion, droidQuestionReview
+    case droidSpec, droidSpecAutonomy, droidSpecFeedback
+
     var program: ChatProgram {
         switch self {
         case .claudeBash, .claudeFileEdit, .claudeFileCreate, .claudeFileRead, .claudeFetch, .claudePlan,
@@ -72,6 +76,9 @@ enum BlockedDialogKind: String, Sendable, Hashable, CaseIterable {
         case .codexExec, .codexPatch, .codexNetwork, .codexQuestion, .codexAsyncCollapsed,
             .codexAsyncQuestion, .codexWorkspaceTrust:
             .codex
+        case .devinWorkspaceTrust, .devinPermission, .devinQuestion, .devinPlan: .devin
+        case .droidWorkspaceTrust, .droidPermission, .droidQuestion, .droidQuestionReview, .droidSpec, .droidSpecAutonomy, .droidSpecFeedback:
+            .droid
         case .ompApproval, .ompQuestion, .ompQuestionReview:
             .omp
         case .grokPermission, .grokQuestion, .grokCancelTurn, .grokFork:
@@ -223,6 +230,9 @@ struct DialogSubject: Sendable, Hashable {
     /// Claude Bash and Codex exec: the command, rows joined with spaces.
     /// Oh My Pi approval: the `Command:` row, its cut-off mark dropped.
     var command: String?
+    var commandRows: [String] = []
+    /// The scope currently selected on Devin’s horizontal Allow row.
+    var devinScope: Int?
     /// Claude Bash: the description row above the command.
     var commandDescription: String?
     /// Claude Edit/Write: the file as the dialog names it. Codex patch: the
@@ -293,6 +303,7 @@ struct DialogSubject: Sendable, Hashable {
 
 /// A dialog the parsers recognized, ready for a native card.
 struct BlockedDialog: Sendable, Hashable {
+
     var program: ChatProgram { kind.program }
     let kind: BlockedDialogKind
     /// The heading as printed: `Bash command`, `Ready to code?`, a
@@ -424,6 +435,8 @@ enum BlockedDialogParser {
         case .opencode: OpenCodeDialogParser.parse(screen)
         case .agy: AgyDialogParser.parse(screen)
         // Pi has no dialog parser yet.
+        case .droid: DroidDialog.parse(screen)
+        case .devin: DevinDialog.parse(screen)
         case .pi, .amp: .none
         }
     }

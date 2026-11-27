@@ -1246,6 +1246,17 @@ final class ConsoleStore {
         if let typing = hostProjection.checkedChatTyping(at: paneID) {
             source.screen = typing.blockedScreen
         }
+        if program.pinsComposerToSession {
+            source.screen.hostName = host.name
+            source.screen.herdrReportsDroidSession = host.serverKind == .herdrTUI
+            source.screen.droidTarget = { [weak self] in
+                guard let live = await self?.projections[hostID] else { return nil }
+                return try await live.chatInputTarget(paneID: paneID, program: program)
+            }
+        }
+        if program.pinsComposerToSession, let tui = hostProjection as? HostConsoleProjection {
+            source.sessionEvidence = { try await tui.droidSessionEvidence(paneID: paneID, program: program) }
+        }
         if let amp = files.amp {
             source.sessionEvidence = { try await amp.evidence() }
         }
@@ -1315,7 +1326,7 @@ final class ConsoleStore {
     /// it presses the Template's stop key (ADR 0035).
     func chatStopPlan(for agent: ConsoleAgent, program: ChatProgram) -> ChatStopPlan {
         let plan = ChatStopPlan.standard(for: program)
-        guard let core = projections[agent.hostID] as? HerdrCoreConsoleProjection,
+        guard program != .devin, let core = projections[agent.hostID] as? HerdrCoreConsoleProjection,
             let stopKey = core.terminalRecord(at: agent.agent.paneID)?.stop
         else { return plan }
         return plan.pressing(templateStopKey: stopKey)
@@ -1331,18 +1342,22 @@ final class ConsoleStore {
         followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil
     ) -> AgentComposerInterrupt {
         let hostID = agent.hostID
+        let verification: ChatStopVerification? = program.pinsComposerToSession
+            ? chatStores[agent.id]?.droidStopVerification() ?? { false }
+            : nil
         if let stop = projections[hostID]?.checkedChatStop(
             for: agent.agent.paneID,
             program: program,
             keepingTo: corePin,
             agentKeys: agentKeys,
             followThrough: followThrough,
+            confirmTarget: verification,
             live: { [weak self] in self?.projections[hostID] })
         {
             return stop
         }
         return chatStopPlan(for: agent, program: program).composerInterrupt(
-            context: context, agentKeys: agentKeys, followThrough: followThrough)
+            context: context, agentKeys: agentKeys, followThrough: followThrough, confirmTarget: verification)
     }
 
     /// A confirmation is an action a detail takes on an address, so it keeps to the
@@ -1422,6 +1437,10 @@ final class ConsoleStore {
             home: { [weak self] in
                 guard let self else { throw TransportError.cancelled }
                 return try await liveChatHostFiles(for: hostID).home()
+            },
+            queryDevin: { [weak self] query in
+                guard let self, let read = try await liveChatHostFiles(for: hostID).queryDevin else { throw TransportError.cancelled }
+                return try await read(query)
             },
             queryOpenCode: { [weak self] query in
                 guard let self else { throw TransportError.cancelled }
@@ -1631,6 +1650,7 @@ final class ConsoleStore {
         _ request: AgentLaunchRequest,
         on hostID: Host.ID
     ) async throws -> Agent {
+        let request = DevinSession.localLaunch(request, platform: hostPlatforms[hostID])
         let agent = try await projection(for: hostID).startAgent(request)
         flushScheduledRebuild()
         return agent
@@ -1694,6 +1714,7 @@ final class ConsoleStore {
         worktree: WorktreeSpec,
         on hostID: Host.ID
     ) async throws -> Agent {
+        let request = DevinSession.localLaunch(request, platform: hostPlatforms[hostID])
         let agent = try await projection(for: hostID).startAgentInNewWorktree(
             request, worktree: worktree)
         flushScheduledRebuild()
@@ -1706,6 +1727,7 @@ final class ConsoleStore {
         workspace: NewWorkspaceSpec,
         on hostID: Host.ID
     ) async throws -> Agent {
+        let request = DevinSession.localLaunch(request, platform: hostPlatforms[hostID])
         let agent = try await projection(for: hostID).startAgentInNewWorkspace(
             request, workspace: workspace)
         flushScheduledRebuild()
@@ -1770,8 +1792,13 @@ final class ConsoleStore {
     /// and answers the id it has there, carrying its pin along. The
     /// projection's resync brings the row to its new Workspace.
     func movePane(
-        _ paneID: String, on hostID: Host.ID, to destination: PaneMoveDestination
+        _ paneID: String, on hostID: Host.ID, to destination: PaneMoveDestination,
+        keepingTo instance: String? = nil, from workspace: String? = nil
     ) async throws -> String {
+        if let instance, hostCores[hostID] != instance { throw leftCoreError(on: hostID) }
+        if instance != nil, let workspace, terminals.first(where: { $0.hostID == hostID && $0.paneID == paneID })?.workspaceID != workspace {
+            throw TransportError.malformedResponse(String(localized: "The Pane has left this Workspace."))
+        }
         let movedPaneID = try await projection(for: hostID).movePane(paneID, to: destination)
         pins.movePin(hostID: hostID, from: paneID, to: movedPaneID)
         rebuild()
@@ -2011,7 +2038,7 @@ final class ConsoleStore {
     }
 
     func offersTitleRename(for agent: ConsoleAgent) -> Bool {
-        capabilities(for: agent.hostID).renameAgent
+        capabilities(for: agent.hostID).renamesConversationTitles
             && ChatProgram(rawValue: agent.agent.kind).map(AgentTitleNaming.supportsRename) == true
     }
 
@@ -2385,8 +2412,9 @@ final class ConsoleStore {
     }
 
     func renameAgent(
-        _ paneID: String, name: String?, on hostID: Host.ID
+        _ paneID: String, name: String?, on hostID: Host.ID, keepingTo corePin: TerminalCorePin? = nil
     ) async throws {
+        guard !hasLeftCore(corePin, on: hostID) else { throw leftCoreError(on: hostID) }
         try await projection(for: hostID).renameAgent(paneID, name: name)
         flushScheduledRebuild()
     }
@@ -2395,6 +2423,14 @@ final class ConsoleStore {
         _ workspaceID: String, label: String, on hostID: Host.ID
     ) async throws {
         try await projection(for: hostID).renameWorkspace(workspaceID, label: label)
+        flushScheduledRebuild()
+    }
+
+    func renameTab(
+        _ tabID: String, label: String, on hostID: Host.ID, keepingTo instance: String?
+    ) async throws {
+        guard let instance, hostCores[hostID] == instance else { throw leftCoreError(on: hostID) }
+        try await projection(for: hostID).renameTab(tabID, label: label)
         flushScheduledRebuild()
     }
 
@@ -3534,6 +3570,25 @@ final class ConsoleStore {
                 guard let self else { throw TransportError.cancelled }
                 _ = try await tmux(of: self).placeClaudeCodeHooks()
             })
+    }
+
+    func configureDroidChatHook(_ action: DroidChatHook.Action, on hostID: Host.ID, keepingTo pin: TerminalCorePin?) async throws {
+        guard capabilities(for: hostID).offersDroidChatHook else {
+            throw TransportError.hostFeatureUnavailable(feature: String(localized: "Droid Chat hooks"))
+        }
+        guard !hasLeftCore(pin, on: hostID) else {
+            throw leftCoreError(on: hostID)
+        }
+        if let rex = projections[hostID] as? RexConsoleProjection {
+            return try await rex.configureDroidChatHook(action, keepingTo: pin)
+        }
+        if let tmux = projections[hostID] as? TmuxConsoleProjection {
+            _ = try await tmux.configureDroidChatHook(action, keepingTo: pin)
+            return
+        }
+        let services = try await harnessEditServices(on: hostID)
+        guard !hasLeftCore(pin, on: hostID) else { throw leftCoreError(on: hostID) }
+        _ = try await services.prepareDroidChatHook(action)
     }
 
     private func harnessEditServices(on hostID: Host.ID) async throws -> any HostServices {

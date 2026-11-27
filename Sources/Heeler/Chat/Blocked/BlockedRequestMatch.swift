@@ -7,7 +7,9 @@ import Foundation
 /// call order.
 enum BlockedRequestMatch {
     static func request(for dialog: BlockedDialog, in requests: [ChatPendingRequest]) -> ChatPendingRequest? {
-        requests.first { matches($0, dialog) }
+        let candidates = requests.filter { matches($0, dialog) }
+        if dialog.program.pinsComposerToSession, candidates.count != 1 { return nil }
+        return candidates.first
     }
 
     /// Every request the dialog could be asking about, oldest first: those
@@ -21,6 +23,41 @@ enum BlockedRequestMatch {
     private static func matches(_ request: ChatPendingRequest, _ dialog: BlockedDialog) -> Bool {
         let subject = dialog.subject
         switch dialog.kind {
+        case .devinWorkspaceTrust, .droidWorkspaceTrust: return false
+        case .devinPlan:
+            // Devin renders inline code with padding and wraps the plan at word boundaries.
+            let visible = dialog.body.joined(separator: " ").split(whereSeparator: \.isWhitespace)
+            let rendered = request.summary.replacing(/`([^`\n]+)`/) { " " + $0.1 + " " }
+            let submitted = rendered.split(whereSeparator: \.isWhitespace)
+            return request.toolName == "exit_plan_mode" && !visible.isEmpty && submitted == visible
+        case .devinQuestion:
+            guard request.toolName == "ask_user_question" else { return false }
+            return request.questions.filter { question in
+                let shown = dialog.options.filter { $0.role == .answer }
+                return question.text == subject.question && question.options.count == shown.count
+                    && zip(question.options, shown).allSatisfy { $0.label == $1.label && $0.detail == $1.detail }
+            }.count == 1
+        case .devinPermission:
+            guard request.toolName == subject.toolName else { return false }
+            if subject.command != nil {
+                return DroidDialog.matchesCommandRows(subject.commandRows, command: request.summary)
+            }
+            guard let path = subject.filePath else { return false }
+            return request.summary == path || (path.hasPrefix("./") && request.summary.hasSuffix(String(path.dropFirst())))
+        case .droidPermission:
+            if let command = subject.command {
+                guard request.toolName == "Execute" else { return false }
+                return request.summary == command || DroidDialog.matchesCommandRows(subject.commandRows, command: request.summary)
+                    || DroidDialog.elidedCommand(command, matches: request.summary)
+            }
+            guard let path = subject.filePath, ["Create", "Edit", "Update"].contains(request.toolName),
+                  request.toolName == subject.toolName || subject.toolName == "Update" else { return false }
+            return request.summary == path || (!path.hasPrefix("/") && request.summary.hasSuffix("/" + path))
+        case .droidQuestion:
+            guard let title = subject.question else { return false }
+            return request.toolName == "AskUser" && request.summary.contains(title)
+        case .droidQuestionReview: return request.toolName == "AskUser"
+        case .droidSpec, .droidSpecAutonomy, .droidSpecFeedback: return request.toolName == "ExitSpecMode"
         case .claudeBash:
             return ["Bash", "PowerShell"].contains(request.toolName) && begins(request.summary, with: subject.command)
         case .claudeFileEdit, .claudeFileCreate:

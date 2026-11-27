@@ -79,6 +79,7 @@ enum ChatUnavailableReason: Equatable, Sendable {
     /// pick can stand in for it (ADR 0034).
     var leavesItToAPick: Bool {
         switch self {
+        case .cannotTellSession(.droid): false
         case .cannotTellSession, .extensionNotLoaded: true
         case .multipleSessions(_, let offersPick): offersPick
         default: false
@@ -104,7 +105,7 @@ extension ChatProgram {
     var writesNewConversationWithFirstReply: Bool {
         switch self {
         case .pi, .omp: true
-        case .claude, .codex, .grok, .opencode, .agy, .amp: false
+        case .claude, .codex, .grok, .opencode, .agy, .droid, .devin, .amp: false
         }
     }
 
@@ -113,7 +114,7 @@ extension ChatProgram {
     var namesItsSessionThroughHeelersExtension: Bool {
         switch self {
         case .pi, .omp: true
-        case .claude, .codex, .grok, .opencode, .agy, .amp: false
+        case .claude, .codex, .grok, .opencode, .agy, .droid, .devin, .amp: false
         }
     }
 }
@@ -278,7 +279,7 @@ struct ChatTranscriptAdapter: Sendable {
     /// store by query rather than from a transcript file (ADR 0025); it
     /// returns nil for a session id the store cannot be asked about. Nil
     /// for a program whose transcript file the engine finds and follows.
-    var makeRecordSource: (@Sendable (_ sessionID: String) -> (any ChatTranscriptSource)?)? = nil
+    var makeRecordSource: (@Sendable (_ sessionID: String, _ transcriptRoot: String?) -> (any ChatTranscriptSource)?)? = nil
 
     /// Whether the conversation is read by query, so there is no file to
     /// look for.
@@ -587,7 +588,7 @@ actor ChatConversationEngine {
         setContext(context)
         do {
             if let makeRecordSource = adapter.makeRecordSource {
-                if let source = makeRecordSource(reference.sessionID) {
+                if let source = makeRecordSource(reference.sessionID, transcriptRoot) {
                     try await follow(source)
                 } else {
                     stop(.unidentifiedSession(reference.program))
@@ -1581,6 +1582,9 @@ actor ChatConversationEngine {
                 let name = reference.program == .omp ? "Oh My Pi" : "Pi"
                 return .unavailable(.unsupportedFormat(String(localized: "\(name) session version \(version)")))
             }
+        case .droid:
+            return .found(try await DroidTranscriptLocator(files: files).locate(
+                sessionID: reference.sessionID, directories: directories, reportedFolder: transcriptRoot))
         case .grok:
             switch try await GrokTranscriptLocator(files: files).locate(
                 sessionID: reference.sessionID, directories: directories, configRoot: transcriptRoot)
@@ -1611,7 +1615,7 @@ actor ChatConversationEngine {
             case .failure(.notFound):
                 return .unavailable(.notFound(searchedAll: true))
             }
-        case .opencode, .amp:
+        case .opencode, .devin, .amp:
             // Its store is read by query, so `open` never looks for a file.
             return .unavailable(.unsupportedSession)
         }
@@ -1774,8 +1778,15 @@ actor ChatConversationEngine {
     private func start(
         _ source: any ChatTranscriptSource, lines: [ChatLine], hydratingFromCache: Bool = false
     ) async throws {
+        let firstLine = try await firstLine(for: source)
+        if reference.program == .droid {
+            let header = firstLine ?? lines.first
+            guard let header, header.offset == 0, DroidTranscriptLocator.sessionID(inHead: header.data) == reference.sessionID else {
+                throw ChatSourceUnavailable(reason: .mismatched)
+            }
+        }
         var reducer = adapter.makeReducer(
-            ChatReducerSeed(path: source.path, firstLine: try await firstLine(for: source)))
+            ChatReducerSeed(path: source.path, firstLine: firstLine))
         reducer.append(lines)
         if let format = reducer.unsupportedFormat {
             stop(.unsupportedFormat(format))

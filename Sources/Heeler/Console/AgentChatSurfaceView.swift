@@ -71,12 +71,14 @@ struct AgentChatSurfaceView: View {
     @State private var isConfirmingClose = false
     @State private var openCodeEditFlow: HarnessConfigEditFlow?
     @State private var extensionFlow: HeelersExtensionFlow?
+    @State private var showsDroidHook = false
     @State private var ampInstall: AmpPluginInstallSheet.Request?
     @State private var closeRequest = AgentCloseRequest.closeAgent
     @State private var isSelectingPhoto = false
     @State private var isSelectingFile = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var isStartingAgent = false
+    @State private var tabRename: TabRenameRequest?
     @State private var movePaneRequest: MovePaneRequest?
     @State private var handOffRequest: HandOffRequest?
     @State private var isManagingSnippets = false
@@ -230,7 +232,7 @@ struct AgentChatSurfaceView: View {
             isPresenting: isSelectingPhoto || isSelectingFile || isConfirmingClose
                 || isStartingAgent || movePaneRequest != nil || handOffRequest != nil || isManagingSnippets
                 || isShowingSkillsPicker
-                || viewingSkill != nil || isRenamingAgent || titleRename != nil || isRenamingWorkspace
+                || viewingSkill != nil || isRenamingAgent || titleRename != nil || tabRename != nil || isRenamingWorkspace
                 || closeErrorMessage != nil || isShowingBackgroundWork || isShowingSwarm,
             isOnStage: { @MainActor in isOnStage() },
             toggleInputMode: nil,
@@ -258,6 +260,7 @@ struct AgentChatSurfaceView: View {
             guard case .success(let url) = result else { return }
             session.staging.begin(.file(url))
         }
+        .modifier(TabRenameSheetPresenter(request: $tabRename, console: console))
         .modifier(
             MovePaneSheetPresenter(request: $movePaneRequest, console: console) { request, paneID in
                 // The Agent has a new id in its new Workspace: the detail goes with it.
@@ -339,7 +342,7 @@ struct AgentChatSurfaceView: View {
                     subject: .agent(detectedKind: agent.agent.kind),
                     currentValue: agent.agent.name ?? ""
                 ) { [console, agent] name in
-                    try await console.renameAgent(agent.agent.paneID, name: name, on: agent.hostID)
+                    try await console.renameAgent(agent.agent.paneID, name: name, on: agent.hostID, keepingTo: session.corePin)
                 })
             .modifier(ConsoleSheetPresentationModifier(
                 presentation: ConsoleSheetPresentation(horizontalSizeClass: horizontalSizeClass)))
@@ -452,7 +455,11 @@ struct AgentChatSurfaceView: View {
         .onChange(of: composer.composedDraft) { _, draft in
             chat?.draftDidChange(to: draft)
         }
-        // Also on appearing: Chat may have followed another while it was away.
+        // The writer's lock can become readable after Chat has loaded the
+        // session. Bind when the verified draft owner becomes available.
+        .onChange(of: chat?.composerSessionID, initial: true) { _, session in
+            if program.pinsComposerToSession { composer.bindDroidDraft(to: session, program: program) }
+        }
         .onChange(of: chat?.conversationGeneration, initial: true) { _, generation in
             guard let generation else { return }
             welcomeModel = nil
@@ -799,6 +806,7 @@ struct AgentChatSurfaceView: View {
                 chooseConversation: offersCandidates ? { isChoosingConversation = true } : nil,
                 reviewEdit: reviewOpenCodeEdit,
                 addExtension: { extensionFlow = console.heelersExtensionFlow(for: agent.id, keepingTo: session.corePin) },
+                installDroidHook: console.capabilities(for: agent.hostID).offersDroidChatHook ? { showsDroidHook = true } : nil,
                 installAmp: {
                     if let place = chat?.ampConnection?.location {
                         ampInstall = .init(place: place, updating: reason == .amp(.update))
@@ -806,6 +814,11 @@ struct AgentChatSurfaceView: View {
                 })
             .sheet(item: $extensionFlow) { flow in
                 HeelersExtensionSheet(flow: flow)
+            }
+            .sheet(isPresented: $showsDroidHook) {
+                DroidHookSheet(host: agent.hostName) { action in
+                    try await console.configureDroidChatHook(action, on: agent.hostID, keepingTo: session.corePin)
+                }
             }
             .sheet(item: $ampInstall) { request in
                 if let connection = chat?.ampConnection {
@@ -835,6 +848,43 @@ struct AgentChatSurfaceView: View {
     private var banners: some View {
         let banners = bannerContent
         return VStack(spacing: 6) {
+            if let id = chat?.droidSessionID {
+                HStack(spacing: 6) {
+                    Image(systemName: "number")
+                    Text(verbatim: id)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .accessibilityLabel(Text("\(program.chatName) session \(id)"))
+            }
+            if let chat, let revision = chat.blocked.droidRevision, revision.session == chat.composerSessionID {
+                @Bindable var draft = revision
+                VStack(alignment: .leading) {
+                    TextField(program == .devin ? String(localized: "Plan feedback") : String(localized: "Spec feedback"), text: $draft.text, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                    if let notice = revision.notice { Text(verbatim: notice).font(.caption) }
+                    Button("Send Feedback") {
+                        Task {
+                            if await composer.sendDroidRevision(revision, policy: sendPolicy, readScreen: readAgentScreen),
+                               chat.blocked.droidRevision === revision { chat.blocked.droidRevision = nil }
+                        }
+                    }
+                    .disabled(revision.text.isEmpty || revision.isSending || revision.outcomeUnknown)
+                }
+                .padding(.horizontal, 12)
+            }
+            if let reason = chat?.blocked.droidStartupGuidance, chat?.droidSessionID == nil {
+                Button(action: openTerminal) {
+                    Label {
+                        Text(verbatim: agent.hostName + " · " + agent.agent.paneID + "\n" + reason)
+                            .font(.caption).multilineTextAlignment(.leading)
+                    } icon: { Image(systemName: "terminal") }
+                }
+                .padding(.horizontal, 12)
+            }
             ForEach(banners) { @Sendable banner in
                 MainActorContent {
                     ChatBanner(
@@ -1104,7 +1154,8 @@ struct AgentChatSurfaceView: View {
 
     private var sendPolicy: ComposerDeliveryPolicy {
         var policy = ComposerDeliveryPolicy.chat(
-            rules: sendRules, activity: agentActivity, readScreen: readAgentScreen, confirmSession: confirmSession,
+            rules: sendRules, activity: agentActivity, readScreen: readAgentScreen, droidTarget: chat?.droidScreen.droidTarget,
+            displayedDroidTarget: { [chat] in chat?.displayedDroidTarget }, confirmSession: confirmSession,
             heldSession: heldSession, sendConcern: sendConcern, willReadScreen: registerSends,
             conversation: conversationStamp)
         if program == .amp {
@@ -1156,9 +1207,14 @@ struct AgentChatSurfaceView: View {
         guard chat?.confirmsSessionBeforeSend ?? program.confirmsSessionBeforeSend else { return nil }
         let chat = chat
         let program = program
+        let composer = composer
         return {
             guard let chat else { return AgentChatStore.uncheckedSessionReason(program) }
-            return await chat.confirmSessionBeforeSend()
+            if let reason = await chat.confirmSessionBeforeSend() { return reason }
+            if program.pinsComposerToSession, !composer.droidDraftMatches(chat.composerSessionID) {
+                return program.draftOwnerGuidance
+            }
+            return nil
         }
     }
 
@@ -1280,11 +1336,17 @@ struct AgentChatSurfaceView: View {
             keyboardIsLeaving: keyboardIsLeaving)
     }
 
+    private var composerStatus: AgentStatus {
+        if program == .devin, [.unknown, .idle, .done].contains(agent.agent.status),
+           console.tmuxProjection(on: agent.hostID) != nil, chat?.hasActivePinnedTurn == true { return .working }
+        return agent.agent.status
+    }
+
     private var composerChrome: some View {
         let hostID = agent.hostID
         return AgentComposerView(
             store: composer,
-            status: agent.agent.status,
+            status: composerStatus,
             hostTelemetry: nil,
             hostTelemetryProvider: { [console] in
                 HostTelemetryPresentation(
@@ -2239,9 +2301,15 @@ struct AgentChatSurfaceView: View {
         let offers = AgentDetailMenuOffers(
             capabilities: console.capabilities(for: agent.hostID), workspaceID: agent.agent.workspaceID,
             removesSavedChat: console.isSavedChat(agent.id))
+        if console.capabilities(for: agent.hostID).renamesExistingTabs, !console.isSavedChat(agent.id) {
+            actions.append(AgentDetailHeaderAction(title: "Rename Tab", systemImage: "pencil") {
+                tabRename = TabRenameRequest(hostID: agent.hostID, tabID: agent.agent.tabID,
+                                             label: agent.tabLabel ?? "", instance: session.corePin.joined)
+            })
+        }
         if offers.movePane {
             actions.append(AgentDetailHeaderAction(title: "Move to Workspace", systemImage: MovePaneCopy.symbol) {
-                movePaneRequest = MovePaneRequest(agent: agent)
+                movePaneRequest = MovePaneRequest(agent: agent, instance: session.corePin.joined)
             })
         }
         if offers.copyPaneID {

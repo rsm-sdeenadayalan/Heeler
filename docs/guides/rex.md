@@ -2,12 +2,12 @@
 
 Connect Heeler over SSH to a Rex server that already runs on a Mac, Linux or Windows Host, and open its terminals on your iPhone or iPad while Rex keeps running them. A Host's Rex server is one of its Servers in Heeler, beside Herdr TUI, [herdr-core](herdr-core.md), and [tmux](tmux.md).
 
-> [!IMPORTANT]
-> Rex support is experimental. It was built and tested against Rex 0.1.0-preview.14 (Rex API revision 12) on macOS, and it opens the terminals and Agents Rex has and starts new shells: see [What Heeler does not do yet](#what-heeler-does-not-do-yet) and [Known limits](#known-limits).
+> [!NOTE]
+> Heeler supports Rex API revisions 12 to 19 on macOS, Linux, and Windows (built against Rex 0.1.0-preview.14 and checked against 0.1.0-preview.23), opening the terminals and Agents Rex runs and starting new shells: see [What Heeler does not do yet](#what-heeler-does-not-do-yet) and [Known limits](#known-limits).
 
 ## Before you start
 
-- A Heeler version after 0.1.20.
+- [Heeler](https://apps.apple.com/app/id6797263135) 0.1.21 or newer for Rex on macOS and Linux (API revision 12), or 0.1.24 or newer for native Windows Rex, New Terminal, and API revisions 12 to 19.
 - Rex running on the Host under the account you will sign in as over SSH. Heeler connects only to a Rex server that is already running and never starts one.
 - Remote Login turned on for the Mac and its SSH fingerprint noted: [Prepare the Host](overlay-networks.md#prepare-the-host). On Linux, run OpenSSH. On Windows, run Win32-OpenSSH, with `rex.exe` on the account's PATH, as WinGet puts it; Heeler reaches the server through Rex's own stdio bridge, and [Chat](#chat) there works for Claude Code.
 - On a Mac or Linux, an SSH server that allows forwarding to a Unix socket, as OpenSSH does by default. If its `sshd_config` sets `AllowStreamLocalForwarding no` or `AllowTcpForwarding no`, Heeler cannot reach Rex.
@@ -19,7 +19,7 @@ Heeler never starts Rex when connecting or checking, and starts nothing in it un
 
 ### 1. Connect
 
-1. In **Hosts**, tap **+**, or **Add Manually** when empty. You can [scan a Pairing Code](pairing.md#pair-a-machine-without-herdr) instead, which skips this step and goes straight to [choosing the Servers](#2-choose-the-servers).
+1. In **Hosts**, tap **+**, or **Add Manually** when empty. On macOS and Linux you can [scan a Pairing Code](pairing.md#pair-a-machine-without-herdr) instead, which skips this step and goes straight to [choosing the Servers](#2-choose-the-servers); on native Windows, add the Host manually.
 2. Enter the **Address** and the SSH **User** of the account that runs Rex. **More Options** has the port, a Jump Host and an overlay network.
 3. Pick **Device Key**, **RSA Key**, or **Password**. For **Device Key**, copy the public-key line into the Host's `~/.ssh/authorized_keys`.
 4. Tap **Connect**, check the Host's key fingerprint, and tap **Trust and Continue**.
@@ -121,11 +121,13 @@ To start an Agent, open a New Terminal and start it there. It moves to **Agents*
 
 ## Chat
 
-**Chat** works for Claude Code, Codex, Pi, and Oh My Pi in Rex on macOS and Linux, and for Claude Code in Rex on Windows. Claude Code and Codex need nothing installed on the Host; Pi and Oh My Pi need [Heeler's extension](#pi-and-oh-my-pi), which Chat offers to add. Heeler reads the conversation over the Host's SSH connection and types into the terminal through Rex, without resizing it. You can read the conversation, **Send** a message, **Stop** a turn, and tap buttons on **Blocked** prompts:
+**Chat** works for Claude Code, Codex, Pi, Oh My Pi, Droid and Devin CLI in Rex on macOS and Linux, and for Claude Code on Windows. Claude Code and Codex need nothing installed on the Host; Pi and Oh My Pi need [Heeler's extension](#pi-and-oh-my-pi), which Chat offers to add. Heeler reads the conversation over the Host's SSH connection and types into the terminal through Rex, without resizing it. You can read the conversation, **Send** a message, **Stop** a turn, and tap buttons on **Blocked** prompts:
 
 | Program | Session notes |
 | --- | --- |
 | Claude Code | Binds from the running Claude Code itself, on Windows too. After `/clear` or `/resume`, Chat checks again before it sends your next message. |
+| Devin CLI | On macOS and Linux, open a [local Devin session](chat.md#devin-cli) with a foreground ACP writer. The Host needs Python 3. |
+| Droid | On macOS and Linux, [install the Droid hook](chat.md#droid) and resume Droid in this terminal. Chat checks its current session before sending. |
 | Codex | Binds once it holds its conversation file, after the first message. Start it with `--no-daemon` ([why](chat.md#set-up-the-host)); without it, Chat shows [**Codex Started Without --no-daemon**](chat-troubleshooting.md#codex-started-without---no-daemon) instead of the conversation. |
 | Pi | Binds through [Heeler's extension](#pi-and-oh-my-pi), as soon as Pi starts. After `/new`, Chat checks again before it sends your next message. |
 | Oh My Pi | Binds through [Heeler's extension](#pi-and-oh-my-pi), as soon as Oh My Pi starts. Without the extension, Chat follows the conversation after its first message. After `/new`, Chat checks again before it sends your next message. |

@@ -706,7 +706,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         _ workspace: NewWorkspaceSpec, tabLabel: String?
     ) async throws -> ShellTerminalIdentity {
         let server = try await launchServer()
-        let made = try await created(try command { try TmuxLaunch.shellSession(workspace, on: server) })
+        let made = try await created(try command { try TmuxLaunch.shellSession(workspace, tab: tabLabel, on: server) })
         if self.server == nil { await session.askNow() }
         return ShellTerminalIdentity(paneID: made.paneID, tabID: made.windowID, terminalID: made.paneID)
     }
@@ -717,6 +717,53 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
 
     func closeTab(_ tabID: String) async throws {
         _ = try await perform(TmuxLaunch.killWindow(tabID, paths: try runningPaths()))
+    }
+
+    func movePane(_ paneID: String, to destination: PaneMoveDestination) async throws -> String {
+        guard let server, let inventory, inventory.instance == server.instance,
+            let pane = TmuxOrganization.build(inventory).panes.first(where: { $0.paneID == paneID })
+        else { throw TransportError.tmuxPaneGone }
+        let target: String
+        var temporary: TmuxLaunch.Created?
+        switch destination {
+        case .workspace(let id):
+            guard id != pane.sessionID, inventory.panes.contains(where: { $0.sessionID == id && !$0.isInHeelerSession })
+            else { throw TransportError.malformedResponse(String(localized: "The destination Workspace has changed.")) }
+            target = id
+        case .newWorkspace:
+            // A session must start with one Pane. Its bounded process also
+            // exits if SSH disappears before the creation receipt arrives.
+            let initial = try await created(TmuxLaunch.checked(
+                target: paneID, instance: server.instance, commands: [
+                    ["new-session", "-d", "-E", "-P", "-F", TmuxLaunch.sessionFormat, "-c", pane.path, "/bin/sleep", "30"],
+                    ["set-option", "-w", "remain-on-exit", "off"],
+                ], paths: server.paths))
+            guard let id = initial.sessionID else { throw TransportError.tmuxPaneGone }
+            temporary = initial
+            target = id
+        }
+
+        let result: GitExecResult
+        do {
+            result = try await perform(TmuxLaunch.movePane(pane, to: target, on: server))
+        } catch {
+            if let temporary { await closeMovePlaceholder(temporary, on: server) }
+            throw error
+        }
+        if let temporary { await closeMovePlaceholder(temporary, on: server) }
+        switch String(decoding: result.stdout, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) {
+        case "heeler-moved": return paneID
+        case "heeler-shared-window":
+            throw TransportError.malformedResponse(String(localized: "This Tab has one Pane and is linked to multiple Workspaces. Move its window link in tmux."))
+        default: throw TransportError.tmuxPaneGone
+        }
+    }
+
+    private func closeMovePlaceholder(_ placeholder: TmuxLaunch.Created, on server: TmuxServerStatus) async {
+        _ = try? await perform(TmuxLaunch.checked(
+            target: placeholder.paneID, instance: server.instance,
+            condition: "#{==:#{pane_id}:#{window_id},\(placeholder.paneID):\(placeholder.windowID)}",
+            commands: [["kill-pane", "-t", placeholder.paneID]], paths: server.paths))
     }
 
     func listWorktrees(forWorkspaceID workspaceID: String) async throws -> WorktreeListResponse {
@@ -1018,7 +1065,29 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     }
 
     func focusAgent(_ paneID: String) async throws {}
-    func renameAgent(_ paneID: String, name: String?) async throws { throw unavailable }
+    func renameAgent(_ paneID: String, name: String?) async throws {
+        if let name, let error = AgentName.validationError(name) { throw TransportError.malformedResponse(error) }
+        guard let server, let expected = agentsByPane[paneID]?.agent.kind,
+            case .live(let sample) = try await readPaneForeground(paneID),
+            sample.instance == server.instance, let owner = sample.foregroundPID,
+            TmuxAgentRule.agentKind(in: sample.pane) == expected
+        else { throw TransportError.tmuxPaneGone }
+        let result = try await perform(TmuxLaunch.renameAgent(sample, owner: owner, kind: expected, name: name, paths: server.paths))
+        guard String(decoding: result.stdout, as: UTF8.self).split(whereSeparator: \.isNewline).last == "heeler-named"
+        else { throw TransportError.tmuxPaneGone }
+    }
+
+    func renameTab(_ tabID: String, label: String) async throws {
+        guard let server, inventory?.instance == server.instance,
+            inventory?.panes.contains(where: { $0.windowID == tabID && !$0.isInHeelerSession }) == true
+        else { throw TransportError.tmuxPaneGone }
+        let result = try await perform(TmuxLaunch.checked(
+            target: tabID, instance: server.instance, condition: "#{==:#{window_id},\(tabID)}",
+            commands: [["rename-window", "-t", tabID, "--", label.replacingOccurrences(of: "#", with: "##")],
+                       ["display-message", "-p", "heeler-named"]], paths: server.paths))
+        guard String(decoding: result.stdout, as: UTF8.self).split(whereSeparator: \.isNewline).last == "heeler-named"
+        else { throw TransportError.tmuxPaneGone }
+    }
 
     func renameWorkspace(_ workspaceID: String, label: String) async throws {
         _ = try await perform(TmuxLaunch.renameSession(id: workspaceID, label: label, paths: try runningPaths()))
@@ -1086,6 +1155,11 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         let locations = try await claudeCodeHookLocations()
         let files = TmuxClaudeCodeHooks.files(
             script: try TmuxClaudeCodeHooks.bundledScript(), paths: paths, dataHome: locations.dataHome)
+        try await placeHookFiles(files)
+        return locations
+    }
+
+    private func placeHookFiles(_ files: [TmuxClaudeCodeHooks.File]) async throws {
         let nonce = HostProcessReader.makeNonce()
         let script = TmuxClaudeCodeHooks.placeScript(files, nonce: nonce)
         let result = try await session.withTransport { transport in
@@ -1094,7 +1168,18 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         guard TmuxClaudeCodeHooks.isPlaced(result, nonce: nonce) else {
             throw TransportError.malformedResponse(String(localized: "The Host refused Heeler's hook script."))
         }
-        return locations
+    }
+
+    func configureDroidChatHook(_ action: DroidChatHook.Action, keepingTo pin: TerminalCorePin? = nil) async throws -> String {
+        if let pin, !admits(pin) { throw TransportError.tmuxServerGone }
+        if action != .removeRegistration {
+            let paths = try await launchServer().paths
+            let locations = try await claudeCodeHookLocations()
+            if let pin, !admits(pin) { throw TransportError.tmuxServerGone }
+            try await placeHookFiles([TmuxClaudeCodeHooks.droidPathsFile(dataHome: locations.dataHome, paths: paths)])
+        }
+        if let pin, !admits(pin) { throw TransportError.tmuxServerGone }
+        return try await session.withTransport { try await $0.hostServices.prepareDroidChatHook(action) }
     }
 
     /// The Host's home and data home, as the Helper's own script finds them.
@@ -1120,6 +1205,9 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
     /// way. A root Heeler can't read with certainty gets them too, since one
     /// handler in two settings files runs once.
     private func hookSettings(for request: AgentLaunchRequest) async -> String? {
+        if DroidChatHook.offersLaunchSettings(kind: request.kind, arguments: request.arguments, kernel: kernel) {
+            return try? await configureDroidChatHook(.launch)
+        }
         guard request.kind == SupportedAgentKind.claude.rawValue,
             let locations = try? await placeClaudeCodeHooks()
         else { return nil }
@@ -1288,13 +1376,14 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
         keepingTo corePin: TerminalCorePin,
         agentKeys: ChatAgentKeysStore? = nil,
         followThrough: (@MainActor () -> ChatStopFollowThrough?)? = nil,
+        confirmTarget: ChatStopVerification? = nil,
         live: @escaping @MainActor () -> (any ConsoleHostProjection)?
     ) -> AgentComposerInterrupt? {
         let plan = ChatStopPlan.standard(for: program)
         let stop = TmuxComposerStop(
             paneID: paneID, program: program, plan: plan,
             projection: { live() as? TmuxConsoleProjection },
-            corePin: corePin, clock: sendClock, seat: .chat)
+            corePin: corePin, clock: sendClock, seat: .chat, confirmTarget: confirmTarget)
         return AgentComposerInterrupt(
             wait: plan.wait, accessibilityHint: plan.accessibilityHint
         ) {
@@ -1426,6 +1515,18 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             .check(HerdrCoreTerminalRecord(tmuxPane: pane), coreCarries: leakedEnvironmentNames)
     }
 
+    func droidDialogTarget(paneID: String) async throws -> DroidDialogTarget? {
+        try await chatInputTarget(paneID: paneID, program: .droid)
+    }
+
+    func chatInputTarget(paneID: String, program: ChatProgram) async throws -> DroidDialogTarget? {
+        guard program.pinsComposerToSession, !isAwaitingSnapshot, let pane = inventoryPane(paneID), !pane.isDead, let active = server,
+              let scope = chatCacheScope else { return nil }
+        let target = try await chatBinder(paneID: paneID, program: program, server: active)
+            .droidDialogTarget(.init(tmuxPane: pane), scope: scope + "/" + paneID)
+        return chatCacheScope == scope ? target : nil
+    }
+
     func claudePermissionLaunch(paneID: String) async throws -> ClaudePermissionMode.Launch? {
         guard !isAwaitingSnapshot, let pane = inventoryPane(paneID), !pane.isDead,
             let activeServer = server
@@ -1503,6 +1604,9 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             program: program,
             processes: { request in
                 try await session.withTransport { try await $0.hostServices.readProcesses(request) }
+            },
+            foregroundDroid: { pid, start, home, cwd in
+                try await session.withTransport { try await $0.hostServices.foregroundDroid(pid: pid, start: start, home: home, cwd: cwd) }
             },
             files: chatHostFiles(),
             clearLabels: { stale in
@@ -1625,6 +1729,7 @@ final class TmuxConsoleProjection: ConsoleHostProjection {
             home: {
                 try await session.withTransport { $0.hostServices }.hostHomeDirectory()
             },
+            queryDevin: { query in try await session.withTransport { $0.hostServices }.queryDevin(query) },
             queryOpenCode: { query in
                 try await session.withTransport { $0.hostServices }.queryOpenCode(query)
             },

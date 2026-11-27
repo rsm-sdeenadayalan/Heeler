@@ -41,6 +41,12 @@ extension ChatUnavailableReason {
         case .noSession(.amp), .unidentifiedSession(.amp): AmpChatProblem.unidentified.explanation
         case .noSession(.claude):
             String(localized: "herdr hasn't reported a Claude Code session ID for this Agent. Chat will keep checking. You can continue in the Agent terminal.")
+        case .noSession(.devin), .unidentifiedSession(.devin), .cannotTellSession(.devin):
+            String(localized: "Open this Devin terminal. Finish directory trust or sign-in there. For a shared daemon, resume the session with devin --process-model in-process -r SESSION.")
+        case .noSession(.droid):
+            String(localized: "Droid has not reported its session ID. Finish startup in the terminal and check the Droid integration on the Host if this persists.")
+        case .unidentifiedSession(.droid):
+            String(localized: "Droid reported an unrecognized session ID. Chat cannot identify its transcript.")
         case .noSession(.codex):
             String(localized: "Codex reports its conversation after a prompt. Send one to show it here.")
         case .noSession(.pi):
@@ -82,6 +88,8 @@ extension ChatUnavailableReason {
             problem.explanation
         case .startScreen(let program):
             String(localized: "\(program.chatName) is on its home screen, so the conversation herdr reported is no longer open there. Open a conversation in the terminal, or send a first message there to start one. Chat follows it once herdr reports it.")
+        case .cannotTellSession(.droid):
+            String(localized: "Install Heeler’s Droid hook, then restart or resume Droid in this terminal so Chat can follow its conversation.")
         case .cannotTellSession(.pi):
             String(localized: "Install the Host Helper from this Host's details, then restart Pi.")
         case .cannotTellSession(.omp):
@@ -628,6 +636,8 @@ extension ChatProgram {
     var chatName: String {
         switch self {
         case .amp: "Amp"
+        case .devin: "Devin"
+        case .droid: "Droid"
         case .claude: "Claude Code"
         case .codex: "Codex"
         case .pi: "Pi"
@@ -642,12 +652,13 @@ extension ChatProgram {
     /// where the evidence is what the Host shows of its process (ADR 0034).
     fileprivate var sessionEvidenceHelp: String {
         switch self {
+        case .devin: return String(localized: "Open the local Devin session in this terminal. If it uses a shared daemon, resume it with devin --process-model=in-process --resume SESSION.")
         case .amp: return AmpChatProblem.unidentified.explanation
         case .codex, .grok:
             return String(localized: "Send a first message in the terminal.")
         case .opencode:
             return String(localized: "Start OpenCode 2.1 or later from New Agent, or add Heeler's plugin.")
-        case .claude, .pi, .omp:
+        case .claude, .pi, .omp, .droid:
             return String(localized: "Finish signing in or answer any prompt in the terminal.")
         case .agy:
             return String(localized: "Send a first message in the terminal, or close the other terminal holding this conversation.")
@@ -698,13 +709,18 @@ struct ChatUnavailableView: View {
     var reviewEdit: (() -> Void)?
     /// Opens what writes Heeler's extension, on a native Windows core Host.
     var addExtension: (() -> Void)?
+    var installDroidHook: (() -> Void)?
     var installAmp: (() -> Void)?
 
     var body: some View {
         ContentUnavailableView {
             Label(reason.title(launchNotice: launchNotice), systemImage: reason.systemImage(launchNotice: launchNotice))
         } description: {
-            reason.unavailableDescription(launchNotice: launchNotice)
+            if reason == .cannotTellSession(.droid), installDroidHook == nil {
+                Text("Open this Agent’s terminal and check that Herdr’s Droid integration reports the running session.")
+            } else {
+                reason.unavailableDescription(launchNotice: launchNotice)
+            }
         } actions: {
             VStack(spacing: 12) {
                 VStack(spacing: 10) {
@@ -736,6 +752,7 @@ struct ChatUnavailableView: View {
     /// Whether a settling action leads the capsule stack as the primary action.
     private var hasSettlingAction: Bool {
         chooseConversation != nil
+            || (installDroidHook != nil && reason == .cannotTellSession(.droid))
             || (ampInstallTitle != nil && installAmp != nil)
             || (reviewEdit != nil && reason.offersOpenCodePluginEdit)
             || (addExtension != nil && reason.offersHeelersExtension)
@@ -750,6 +767,11 @@ struct ChatUnavailableView: View {
     }
 
     @ViewBuilder private var capsuleActions: some View {
+        if let installDroidHook, reason == .cannotTellSession(.droid) {
+            Button("Install Droid Hook…", action: installDroidHook)
+                .buttonStyle(UnavailableCapsuleStyle(prominence: .primary))
+                .accessibilityIdentifier("chat.droid.install")
+        }
         if let ampInstallTitle, let installAmp {
             Button(ampInstallTitle, action: installAmp)
                 .buttonStyle(UnavailableCapsuleStyle(prominence: .primary))

@@ -148,6 +148,7 @@ final class TmuxChatTyping: CheckedChatTyping {
 
     var blockedScreen: BlockedScreenIO {
         var screen = BlockedScreenIO.unavailable
+        screen.checksTrustWithStaleWorkingReport = true
         screen.readScreen = { [weak self] in
             guard let self else { throw TransportError.cancelled }
             return try await self.readScreen()
@@ -195,7 +196,7 @@ final class TmuxChatTyping: CheckedChatTyping {
 
     func press(
         _ keys: [String], heldSinceScreenRead: Bool = false,
-        whileShowing stillShows: (@Sendable (ANSIScreen) -> Bool)? = nil
+        whileShowing stillShows: (@Sendable (ANSIScreen) async -> Bool)? = nil
     ) async throws {
         var steps: [TmuxInput] = []
         for key in keys {
@@ -247,7 +248,7 @@ final class TmuxChatTyping: CheckedChatTyping {
 
     func paste(
         _ text: String, heldSinceScreenRead: Bool = false,
-        whileShowing stillShows: (@Sendable (ANSIScreen) -> Bool)? = nil
+        whileShowing stillShows: (@Sendable (ANSIScreen) async -> Bool)? = nil
     ) async throws {
         let attach = try await attachToType(heldSinceScreenRead: heldSinceScreenRead, stillShows: stillShows)
         do {
@@ -276,12 +277,15 @@ final class TmuxChatTyping: CheckedChatTyping {
         case .unknown:
             return
         }
-        guard let projection, projection.admits(corePin) else { return }
+        // Devin has no tmux status hook to retire a synthetic Working report.
+        // Its screen and pending SQLite call already tell Chat when the prompt ends.
+        guard let projection, projection.admits(corePin),
+              projection.agentsByPane[paneID]?.agent.kind != ChatProgram.devin.rawValue else { return }
         _ = await projection.recordHeelerAnswer(declines: declines, on: paneID)
     }
 
     private func attachToType(
-        heldSinceScreenRead: Bool, stillShows: (@Sendable (ANSIScreen) -> Bool)?
+        heldSinceScreenRead: Bool, stillShows: (@Sendable (ANSIScreen) async -> Bool)?
     ) async throws -> TmuxChatAttach {
         let projection = try liveProjection()
         let holder = try await checkHolder(in: projection, heldSinceScreenRead: heldSinceScreenRead)
@@ -306,7 +310,7 @@ final class TmuxChatTyping: CheckedChatTyping {
                 } catch {
                     throw Refusal(message: Self.noAnswer)
                 }
-                guard stillShows(currentScreen) else {
+                guard await stillShows(currentScreen) else {
                     throw Refusal(message: BlockedCardStore.changedMessage)
                 }
             }
