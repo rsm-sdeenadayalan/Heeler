@@ -14,19 +14,21 @@ struct StartAgentView: View {
     @State private var directoryBrowser: RemoteDirectoryBrowser?
     private let onStarted: (ConsoleAgent.ID) -> Void
     private let console: ConsoleStore
+    private let hosts: [Host]
     @Environment(\.dismiss) private var dismiss
 
     init(
         store: StartAgentStore, console: ConsoleStore,
         onStarted: @escaping (ConsoleAgent.ID) -> Void = { _ in }
     ) {
-        self.init(console: console, onStarted: onStarted) { store }
+        self.init(hosts: store.hosts, console: console, onStarted: onStarted) { store }
     }
 
     private init(
-        console: ConsoleStore, onStarted: @escaping (ConsoleAgent.ID) -> Void,
+        hosts: [Host], console: ConsoleStore, onStarted: @escaping (ConsoleAgent.ID) -> Void,
         makeStore: @escaping () -> StartAgentStore
     ) {
+        self.hosts = hosts
         self.onStarted = onStarted
         self.console = console
         _storage = State(initialValue: LazyStore(make: makeStore))
@@ -38,7 +40,7 @@ struct StartAgentView: View {
         gitHubLaunch: StartAgentStore.GitHubLaunch? = nil,
         onStarted: @escaping (ConsoleAgent.ID) -> Void
     ) {
-        self.init(console: console, onStarted: onStarted) {
+        self.init(hosts: hosts, console: console, onStarted: onStarted) {
             StartAgentStore(
                 hosts: hosts,
                 workspaces: { console.workspaces(for: $0) },
@@ -65,7 +67,8 @@ struct StartAgentView: View {
                 origin: origin,
                 gitHubLaunch: gitHubLaunch,
                 offersDesktopAppNames: { console.capabilities(for: $0).namesNewWorkspaces },
-                offersConnectedWorktrees: { console.capabilities(for: $0).worktrees },
+                offersConnectedWorktrees: { console.capabilities(for: $0).createsWorktrees },
+                capabilities: { console.capabilities(for: $0) },
                 presets: { console.launchPresets.presets },
                 accountVariable: { hostID, kind in try await console.accountVariable(for: kind, on: hostID) })
         }
@@ -80,8 +83,8 @@ struct StartAgentView: View {
                 if let origin = store.origin {
                     Section {
                         Text(origin.cwd)
-                            .font(.callout.monospaced())
-                            .lineLimit(2)
+                            .font(.footnote.monospaced())
+                            .lineLimit(1)
                             .truncationMode(.middle)
                     } header: {
                         Text("Directory")
@@ -98,6 +101,10 @@ struct StartAgentView: View {
                             servers: store.serversForSelectedHost,
                             offersServerChoice: store.offersServerChoice,
                             selectedServerID: $store.selectedHostID)
+                        if store.serversForSelectedHost.count == 1, let server = store.serversForSelectedHost.first,
+                           server.serverKind == .rex {
+                            LabeledContent("Server", value: LaunchHostChoice.serverLabel(for: server))
+                        }
                     }
 
                     Section {
@@ -126,10 +133,14 @@ struct StartAgentView: View {
                                     .font(.callout)
                                     .foregroundStyle(.secondary)
                             } else {
-                                Label(store.newWorkspaceDirectory, systemImage: "folder")
-                                    .font(.callout.monospaced())
-                                    .lineLimit(2)
-                                    .truncationMode(.middle)
+                                Label {
+                                    Text(store.newWorkspaceDirectory)
+                                        .font(.footnote.monospaced())
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                } icon: {
+                                    Image(systemName: "folder")
+                                }
                             }
                             Button("Browse Directory…", systemImage: "folder.badge.plus") {
                                 openDirectoryBrowser()
@@ -222,59 +233,63 @@ struct StartAgentView: View {
                 }
 
                 Section {
-                    switch store.agentDiscoveryState {
-                    case _ where store.isStartingTemplate:
-                        HStack {
-                            ProgressView()
-                            if let name = store.selectedTemplate?.name {
-                                Text("Starting \(name)…")
-                            } else {
-                                Text("Starting the Template…")
-                            }
-                        }
-                    case .idle:
-                        Text("Select a Host to detect installed Agents.")
-                            .foregroundStyle(.secondary)
-                    case .loading:
-                        HStack {
-                            ProgressView()
-                            Text("Detecting installed Agents…")
-                        }
-                    case .loaded where store.availableAgentKinds.isEmpty && store.availableTemplates.isEmpty:
-                        ContentUnavailableView(
-                            "No Agents Found",
-                            systemImage: "magnifyingglass",
-                            description: Text(
-                                "Install a supported Agent CLI on this Host, then try again."))
-                        Button("Detect Again", systemImage: "arrow.clockwise") {
-                            Task { await store.discoverAgents() }
-                        }
-                    case .loaded:
-                        agentPicker
-                        if !store.selectedAgentPresets.isEmpty {
-                            Picker("Preset", selection: $store.selectedPresetID) {
-                                Text("None").tag(LaunchPreset.ID?.none)
-                                ForEach(store.selectedAgentPresets) { @Sendable preset in
-                                    AgentKindMenuLabel(preset.name, kind: preset.kind)
-                                        .tag(LaunchPreset.ID?.some(preset.id))
+                    if let message = store.launchUnavailableMessage {
+                        Text(message).foregroundStyle(.secondary)
+                    } else {
+                        switch store.agentDiscoveryState {
+                        case _ where store.isStartingTemplate:
+                            HStack {
+                                ProgressView()
+                                if let name = store.selectedTemplate?.name {
+                                    Text("Starting \(name)…")
+                                } else {
+                                    Text("Starting the Template…")
                                 }
                             }
-                            .accessibilityIdentifier("startAgent.preset")
-                            if let preset = store.selectedPreset {
-                                LaunchPresetSummary(preset: preset)
+                        case .idle:
+                            Text("Select a Host to detect installed Agents.")
+                                .foregroundStyle(.secondary)
+                        case .loading:
+                            HStack {
+                                ProgressView()
+                                Text("Detecting installed Agents…")
                             }
-                        }
-                        Button("Detect Again", systemImage: "arrow.clockwise") {
-                            Task { await store.discoverAgents() }
-                        }
-                    case .failed(let message):
-                        Label(message, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.errorInk)
-                        if !store.availableTemplates.isEmpty {
+                        case .loaded where store.availableAgentKinds.isEmpty && store.availableTemplates.isEmpty:
+                            ContentUnavailableView(
+                                "No Agents Found",
+                                systemImage: "magnifyingglass",
+                                description: Text(
+                                    "Install a supported Agent CLI on this Host, then try again."))
+                            Button("Detect Again", systemImage: "arrow.clockwise") {
+                                Task { await store.discoverAgents() }
+                            }
+                        case .loaded:
                             agentPicker
-                        }
-                        Button("Retry", systemImage: "arrow.clockwise") {
-                            Task { await store.discoverAgents() }
+                            if !store.selectedAgentPresets.isEmpty {
+                                Picker("Preset", selection: $store.selectedPresetID) {
+                                    Text("None").tag(LaunchPreset.ID?.none)
+                                    ForEach(store.selectedAgentPresets) { @Sendable preset in
+                                        AgentKindMenuLabel(preset.name, kind: preset.kind)
+                                            .tag(LaunchPreset.ID?.some(preset.id))
+                                    }
+                                }
+                                .accessibilityIdentifier("startAgent.preset")
+                                if let preset = store.selectedPreset {
+                                    LaunchPresetSummary(preset: preset)
+                                }
+                            }
+                            Button("Detect Again", systemImage: "arrow.clockwise") {
+                                Task { await store.discoverAgents() }
+                            }
+                        case .failed(let message):
+                            Label(message, systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(.errorInk)
+                            if !store.availableTemplates.isEmpty {
+                                agentPicker
+                            }
+                            Button("Retry", systemImage: "arrow.clockwise") {
+                                Task { await store.discoverAgents() }
+                            }
                         }
                     }
                 } header: {
@@ -391,7 +406,8 @@ struct StartAgentView: View {
                     dismiss()
                 }
             }
-            .task(id: store.selectedHostID) {
+            .onChange(of: hosts) { store.updateHosts(hosts) }
+            .task(id: store.discoveryHostID) {
                 await store.discoverAgents()
             }
             // The presented item also supplies the content, so the first
@@ -451,6 +467,7 @@ struct StartAgentView: View {
     private func openDirectoryBrowser() {
         guard let hostID = store.selectedHostID else { return }
         directoryBrowser = RemoteDirectoryBrowser(
+            initialPath: store.initialBrowseDirectory,
             resolveHome: { try await console.remoteHomeDirectory(on: hostID) },
             list: { try await console.listRemoteDirectories(at: $0, on: hostID) })
     }
@@ -591,39 +608,65 @@ struct StartWorkspacePicker: View {
             })
     }
 
+    @ViewBuilder
+    private var pickerOptions: some View {
+        if selectedWorkspaceID == nil && !isNewWorkspaceSelected {
+            Text("None reported").tag(Selection?.none)
+        }
+        ForEach(workspaces) { @Sendable workspace in
+            Text(workspace.label).tag(Selection?.some(.existing(workspace.id)))
+        }
+        if newDirectory != nil {
+            Text(directoryName).tag(Selection?.some(.newWorkspace))
+        } else if isNewWorkspaceSelected {
+            Text("Home").tag(Selection?.some(.newWorkspace))
+        }
+        Divider()
+        Label("New Workspace", systemImage: "folder.badge.plus")
+            .tag(Selection?.some(.browse))
+            .accessibilityIdentifier("new-workspace")
+    }
+
     /// A menu picker, as the Host row above it is: the whole row opens it,
     /// from the value at its trailing edge. New Workspace is its last
-    /// option, which browses instead of becoming the selection. It must be
-    /// the row itself: wrapped, the form draws it as a bare button.
+    /// option, which browses instead of becoming the selection. When a browsed
+    /// directory is shown, laying it out below the title row keeps the picker
+    /// anchored on the first line's trailing edge and gives the path the full
+    /// row width on the second line.
     var body: some View {
-        Picker(selection: selection) {
-            if selectedWorkspaceID == nil && !isNewWorkspaceSelected {
-                Text("None reported").tag(Selection?.none)
-            }
-            ForEach(workspaces) { @Sendable workspace in
-                Text(workspace.label).tag(Selection?.some(.existing(workspace.id)))
-            }
-            if newDirectory != nil {
-                Text(directoryName).tag(Selection?.some(.newWorkspace))
-            } else if isNewWorkspaceSelected {
-                Text("Home").tag(Selection?.some(.newWorkspace))
-            }
-            Divider()
-            Label("New Workspace", systemImage: "folder.badge.plus")
-                .tag(Selection?.some(.browse))
-                .accessibilityIdentifier("new-workspace")
-        } label: {
-            Text("Workspace")
-            // The browsed directory in full, under the row's title.
-            if isNewWorkspaceSelected, let newDirectory {
+        if isNewWorkspaceSelected, let newDirectory {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text("Workspace")
+                        .foregroundStyle(.primary)
+                        .layoutPriority(1)
+                    Spacer(minLength: 8)
+                    Picker("Workspace", selection: selection) {
+                        pickerOptions
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .tint(.secondary)
+                    .menuOrder(.fixed)
+                    .disabled(!canBrowse)
+                    .accessibilityIdentifier("start-workspace-picker")
+                }
                 Text(newDirectory)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
+        } else {
+            Picker("Workspace", selection: selection) {
+                pickerOptions
+            }
+            // The form's own picker style, not `.menu`, which draws a bare
+            // accent-colored value that only it opens.
+            .menuOrder(.fixed)
+            .disabled(!canBrowse)
+            .accessibilityIdentifier("start-workspace-picker")
         }
-        // The form's own picker style, not `.menu`, which draws a bare
-        // accent-colored value that only it opens.
-        .menuOrder(.fixed)
-        .disabled(!canBrowse)
-        .accessibilityIdentifier("start-workspace-picker")
     }
 }
 

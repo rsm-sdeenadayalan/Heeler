@@ -169,7 +169,7 @@ struct RexChatTests {
         #expect(try await chatFiles.list(RemoteFileListingRequest(directory: folder))?.entries.count == 1)
         #expect(try await chatFiles.read(range).data == line)
         #expect(try await rig.projection.sessionFileReader()(range).data == line)
-        #expect(chatFiles.queryOpenCode == nil)
+        #expect(chatFiles.queryOpenCode != nil)
         #expect(try await rig.projection.modelContextWindowResolver()("gpt-5.5") == nil)
 
         let reads = try await rig.projection.session.withConnection { $0.transport.reads }
@@ -313,7 +313,10 @@ struct RexChatTests {
 
         #expect(rig.projection.usesProcessBoundChat)
         #expect(rig.projection.chatCacheScope == "rex:instance-0001")
-        #expect(HostCapabilities.rexChatPrograms == [.claude, .codex, .pi, .omp, .droid, .devin])
+        #expect(HostCapabilities.rexChatPrograms == [.claude, .codex, .grok, .pi, .omp, .agy, .droid, .devin, .opencode, .amp])
+        #expect(HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.macOSKernel).offersChat(for: .grok))
+        #expect(HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.linuxKernel).offersChat(for: .grok))
+        #expect(!HostCapabilities(serverKind: .rex, coreKernel: HerdrCoreLocator.windowsKernel).offersChat(for: .grok))
         #expect(!rig.host.capabilities.chat)
 
         world.restart(as: "instance-0002")
@@ -344,15 +347,40 @@ struct RexChatTests {
         #expect(request.pids == ["4242"])
         #expect(request.valuesOf.starts(with: ["REX_SESSION", "REX_BLOCK"]))
 
+        let amp = try await rig.projection.checkChatSession(paneID: Self.paneID, program: .amp)
+        #expect(amp == .unavailable(.cannotTellSession(.amp)))
+
         let logged = await connection.log
-        let grok = try await rig.projection.checkChatSession(paneID: Self.paneID, program: .grok)
-        #expect(grok == .unavailable(.cannotTellSession(.grok)))
+        let antigravity = try await rig.projection.checkChatSession(paneID: Self.paneID, program: .agy)
+        #expect(antigravity == .unavailable(rig.projection.chatCannotTell(.agy)))
         let gone = RexPaneAddress(sessionID: "session:studio", blockID: "block:gone").paneID
         let unlisted = try await rig.projection.checkChatSession(paneID: gone, program: .claude)
         #expect(unlisted == .unavailable(.cannotTellSession(.claude)))
         #expect(try await rig.projection.chatCandidates(paneID: gone, program: .claude) == .noProcess)
         #expect(await connection.log == logged)
         #expect(rig.projection.chatCannotTell(.claude) == .cannotTellSession(.claude))
+        // A new foreground read must succeed even when the last inventory still names Claude.
+        await server.answer(RexInventoryWire.terminalMethod("process"), using: { _ in
+            .error(code: "not_found", message: "gone", status: 404)
+        })
+        await #expect(throws: (any Error).self) {
+            try await rig.projection.checkChatSession(paneID: Self.paneID, program: .claude)
+        }
+    }
+
+    @Test func anAgentNameSheetDoesNotRenameTheForegroundThatReplacedIt() async throws {
+        let world = FakeRexWorld(sessions: [Self.studioRunningClaude()], platform: "linux_arm64")
+        let server = await served(world)
+        let rig = rig(ScriptedRexHost(control: [.server(server)]))
+        defer { rig.projection.end() }
+        try await waitForClaude(rig)
+        let rename = try #require(rig.projection.renameBlockAction(for: Self.paneID))
+        // The desktop switched programs. The inventory still holds the first report.
+        await server.answer(RexInventoryWire.terminalMethod("process"), using: { _ in
+            .result(["foreground": ["name": "bash", "argv0": "/bin/bash", "pid": 4242]])
+        })
+        await #expect(throws: TransportError.rexServerGone) { try await rename("heeler-lab-old") }
+        #expect(await server.requests.filter { $0.method == "session.set_block_label" }.isEmpty)
     }
 
     /// The revision moves when a check could answer differently: the
@@ -710,6 +738,8 @@ struct RexChatTests {
         await files.write("const terminal = process.env.HC_TERMINAL_ID;\n", at: Self.piExtension)
         #expect(try await reason() == .unavailable(absent))
         await files.write("if (!env.REX_SESSION || !env.REX_BLOCK) return null;\n", at: Self.piExtension)
+        #expect(try await reason() == .unavailable(absent))
+        await files.write("// Rex session report format v2\n", at: Self.piExtension)
         #expect(try await reason() == .unavailable(inPlace))
 
         #expect(rig.projection.chatCannotTell(.pi) == absent)
@@ -760,5 +790,117 @@ struct RexChatTests {
             try await rig.projection.placeChatExtension(Data("extension".utf8), inFolder: folder, keepingTo: pin)
         }
         #expect(await connection.placedExtensions.count == 1)
+    }
+
+    @Test func openCodePluginEditReviewsAcceptsAndUndoesOnRex() async throws {
+        var studio = FakeRexWorld.studio()
+        var opencode = FakeRexWorld.Block.running("block:left", program: "opencode", argv0: "opencode")
+        opencode.label = "left"
+        opencode.directory = "/work/app"
+        opencode.status = opencode.record("idle", app: "opencode")
+        studio.windows[0].layers[0].blocks[2] = opencode
+        let world = FakeRexWorld(sessions: [studio], platform: "linux_x86_64")
+        let server = await served(world)
+        let table = ScriptedProcessTable()
+        await table.add(
+            .init(
+                pid: 4242, parent: 4000, name: "opencode", start: "987654321",
+                environment: [
+                    "REX_SESSION": "session:studio", "REX_BLOCK": "block:left",
+                    "HOME": "/home/dev", "PATH": "/usr/local/bin:/usr/bin:/bin",
+                ]))
+        let configPath = "/home/dev/.config/opencode/cli.json"
+        let folderPath = "/home/dev/.config/opencode/heeler-opencode"
+        let original = Data("{\n  \"theme\": \"dark\"\n}\n".utf8)
+        let editFiles = InMemoryHostFiles(files: [configPath: original])
+        let connection = ScriptedRexHost(
+            control: [.server(server)],
+            files: VirtualHostFiles(home: "/home/dev"),
+            processes: { try await table.read($0) },
+            editFiles: editFiles,
+            openCodeVersion: "opencode v2.2.5")
+        let host = Self.host()
+        let dialer = RexHostSessionTests.Dialer([connection])
+        let bundle = HostHelperFixture.bundle(
+            extraFiles: Dictionary(
+                uniqueKeysWithValues: OpenCodePluginEdit.fileNames.map {
+                    ("extensions/opencode/\($0)", Data("// \($0)\n".utf8))
+                }))
+        let store = ConsoleStore(
+            makeSession: { _, subscriptions in
+                EventsSession(
+                    subscriptions: subscriptions,
+                    connect: { throw TransportError.sshUnreachable(detail: "not a Herdr TUI Host") },
+                    keepalive: nil)
+            },
+            makeRexSession: { _ in
+                RexHostSession(
+                    storedSocket: host.rexSocket, connect: { try await dialer.dial($0, $1) },
+                    reconnectPolicy: ReconnectPolicy(initialDelay: .milliseconds(10), multiplier: 1, maxDelay: .milliseconds(10)))
+            },
+            harnessEdits: HarnessConfigEditStore(),
+            hostHelperBundle: { bundle })
+        store.setHosts([host])
+        defer { store.setHosts([]) }
+        await store.resume()
+        try await waitUntil("the OpenCode Agent") {
+            store.agents.contains { $0.hostID == host.id && $0.agent.kind == ChatProgram.opencode.rawValue }
+        }
+        let agent = try #require(
+            store.agents.first { $0.hostID == host.id && $0.agent.kind == ChatProgram.opencode.rawValue })
+        #expect(store.chatProgram(for: agent) == .opencode)
+        #expect(!store.capabilities(for: host.id).readOnlyChatPrograms.contains(.opencode))
+
+        let flow = store.openCodePluginEditFlow(for: agent.id, keepingTo: store.corePin(on: host.id))
+        await flow.review()
+        guard case .review(let change) = flow.phase else {
+            Issue.record("expected review phase, got \(flow.phase)")
+            return
+        }
+        #expect(change.path == configPath)
+        #expect(change.folder?.path == folderPath)
+
+        await flow.accept()
+        #expect(flow.phase == .idle)
+        #expect(await editFiles.folders.contains(folderPath))
+        #expect(await editFiles.files["\(folderPath)/tui.js"] == Data("// tui.js\n".utf8))
+        #expect(
+            await editFiles.files[configPath]
+                == Data("{\n  \"plugins\": [\"./heeler-opencode\"],\n  \"theme\": \"dark\"\n}\n".utf8))
+
+        await flow.undo()
+        #expect(flow.applied == nil)
+        #expect(await editFiles.files == [configPath: original])
+        #expect(await editFiles.folders.isEmpty)
+    }
+
+    @Test func boundAntigravityAllowsStagedAttachmentPathsAndRefusesSlashCommands() async throws {
+        #expect(ChatSendRules.isLeadingSlashCommand("/clear"))
+        #expect(ChatSendRules.isLeadingSlashCommand("  /compact "))
+        #expect(ChatSendRules.isLeadingSlashCommand("\u{200B}/plan"))
+        #expect(!ChatSendRules.isLeadingSlashCommand("/var/folders/ab/heeler/photo.png "))
+        #expect(!ChatSendRules.isLeadingSlashCommand("/tmp/heeler-stage/doc.pdf"))
+        #expect(!ChatSendRules.isLeadingSlashCommand("Look at /tmp/heeler-stage/photo.png"))
+
+        var policy = ComposerDeliveryPolicy(
+            route: .chat, insertsIntoAttachWhenBlocked: false, outgoingText: { $0 },
+            validate: { _ in nil }, preflight: { _ in nil }, verify: nil)
+        policy.restrictAntigravityToMessages()
+
+        #expect(await policy.preflight?("/clear") == .inputNotReady("Use the Antigravity terminal for commands."))
+        #expect(await policy.preflight?("/var/folders/ab/heeler/photo.png ") == nil)
+        #expect(await policy.preflight?("Describe /tmp/heeler-stage/photo.png ") == nil)
+    }
+
+    @Test func agyTranscriptReducerRecordsImageOnlyPromptForEchoMatching() {
+        let line = #"""
+            {"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-11-28T06:00:00Z","content":"<USER_REQUEST>\n\n</USER_REQUEST>","media":[{"mime_type":"image/png","uri":"/tmp/heeler-stage/photo.png"}]}
+            """#
+        var reducer = AgyTranscriptReducer()
+        reducer.append([ChatLine(offset: 0, length: line.utf8.count, data: Data(line.utf8))])
+        let transcript = reducer.transcript(ChatProjectionContext(windowStart: 0, activity: .idle))
+
+        #expect(transcript.recordedPrompts.count == 1)
+        #expect(transcript.recordedPrompts.first?.pastedImagePaths == [])
     }
 }

@@ -44,6 +44,8 @@ protocol RexTransport: Sendable {
     /// else of it.
     nonisolated var reads: any RexHostReads { get }
 
+    nonisolated var amp: (any AmpChatHost)? { get }
+
     /// The staging of a file or image the user attaches, on this same SSH
     /// connection, and nothing else of it.
     nonisolated var staging: any RexHostStaging { get }
@@ -56,6 +58,9 @@ protocol RexTransport: Sendable {
     /// The gh runs of the GitHub tab, on this same SSH connection, and
     /// nothing else of it (ADR 0065).
     nonisolated var gitHub: any GitHubHostCLI { get }
+
+    /// POSIX project operations provided by the SSH account. A socket-only connection has none.
+    nonisolated var projects: (any RexHostProjects)? { get }
 
     /// New Terminal's home directory and Browse Directory, on this same SSH
     /// connection, and nothing else of it.
@@ -71,6 +76,9 @@ protocol RexTransport: Sendable {
 }
 
 extension RexTransport {
+    nonisolated var amp: (any AmpChatHost)? { nil }
+    nonisolated var projects: (any RexHostProjects)? { nil }
+
     func abandon() async {
         await close()
     }
@@ -94,7 +102,7 @@ extension RexTransport {
 /// waits on other reads and on stagings (`RexHostStaging`) only. Rex's links
 /// are direct-streamlocal channels, which sshd's `MaxSessions` does not
 /// count (rex-compatibility.md).
-protocol RexHostReads: DroidForegroundReading, DevinChatReading {
+protocol RexHostReads: OpenCodeReading, DroidForegroundReading, DevinChatReading {
     /// A range of a session file, on the SFTP channel Chat keeps open.
     func readFileSlice(_ range: RemoteFileRange) async throws -> RemoteFileSlice
     func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice
@@ -140,18 +148,48 @@ protocol RexHostStaging: Sendable {
 /// one folder when the Agent's directory has none, then writes the file as a
 /// 0600 temporary file it renames into place. Nothing else is reachable from
 /// it: no other file name, no exec, and no read of the Host's files.
-protocol RexHostExtensionPlacing: DroidChatHookHost {
+protocol RexHostExtensionPlacing: DroidChatHookHost, HarnessConfigFileAccess {
     /// `folder` is an `extensions` folder by its absolute path; any other is
     /// refused before anything is written.
     func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws
+
+    func runOpenCodeVersionScript(_ script: Data) async throws -> GitExecResult
+}
+
+extension RexHostExtensionPlacing {
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+    }
+
+    func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+    }
+
+    func createHostFolder(path: String) async throws {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+    }
+
+    func removeEmptyHostFolder(path: String) async throws {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+    }
+
+    func runOpenCodeVersionScript(_ script: Data) async throws -> GitExecResult {
+        throw TransportError.hostFeatureUnavailable(feature: String(localized: "Editing Host files"))
+    }
+}
+
+/// The SSH operations behind project reads, Agent discovery and Worktree creation.
+protocol RexHostProjects: HostProjectReading, HostWorktreeAccess {
+    func discoverRexAgents() async throws -> HerdrCoreLaunch.InstalledAgents
 }
 
 /// What a Rex Host uses of its SSH connection. `HeelerSSHTransport` is the
 /// production one; tests script one.
 protocol RexHostConnection:
     ServerKindDetectionConnection, RexHostReads, RexHostStaging, RexHostExtensionPlacing, GitHubHostCLI,
-    RexHostBrowsing
+    RexHostBrowsing, AmpChatHost
 {
+    nonisolated var projects: (any RexHostProjects)? { get }
     nonisolated var routeID: UUID? { get }
 
     var isConnected: Bool { get async }
@@ -179,6 +217,8 @@ protocol RexHostConnection:
 }
 
 extension RexHostConnection {
+    nonisolated var projects: (any RexHostProjects)? { nil }
+
     func abandon() async {
         try? await close()
     }
@@ -294,6 +334,8 @@ actor RexSSHTransport: RexTransport {
     /// them can be cast back to the connection and write.
     nonisolated var reads: any RexHostReads { RexReadsOnly(connection: connection) }
 
+    nonisolated var amp: (any AmpChatHost)? { RexAmpOnly(connection: connection) }
+
     /// The connection's staging behind a type of its own, for the same reason.
     nonisolated var staging: any RexHostStaging { RexStagingOnly(connection: connection) }
 
@@ -306,6 +348,8 @@ actor RexSSHTransport: RexTransport {
     nonisolated var gitHub: any GitHubHostCLI { RexGitHubOnly(connection: connection) }
 
     /// And its home directory and directory listings, for the same reason.
+    nonisolated var projects: (any RexHostProjects)? { connection.projects }
+
     nonisolated var browsing: any RexHostBrowsing { RexBrowsingOnly(connection: connection) }
 
     func close() async {
@@ -448,6 +492,10 @@ private struct RexReadsOnly: RexHostReads {
         try await connection.hostHomeDirectory()
     }
 
+    func queryOpenCode(_ query: OpenCodeQuery) async throws -> OpenCodeQueryResponse {
+        try await connection.queryOpenCode(query)
+    }
+
     func queryDevin(_ query: DevinSessionQuery) async throws -> DevinSessionPage {
         try await connection.queryDevin(query)
     }
@@ -458,6 +506,18 @@ private struct RexReadsOnly: RexHostReads {
 
     func readProcesses(_ request: HostProcessReader.Request) async throws -> [String: HostProcessReader.Facts] {
         try await connection.readProcesses(request)
+    }
+}
+
+private struct RexAmpOnly: AmpChatHost {
+    let connection: any AmpChatHost
+
+    func exchangeAmpChat(_ request: AmpChatRequest, record: AmpPluginRecord) async throws -> AmpChatReply {
+        try await connection.exchangeAmpChat(request, record: record)
+    }
+
+    func installAmpChatPlugin(in directory: String, replacing previous: Data?) async throws {
+        try await connection.installAmpChatPlugin(in: directory, replacing: previous)
     }
 }
 
@@ -490,6 +550,26 @@ private struct RexExtensionPlacingOnly: RexHostExtensionPlacing {
 
     func placeHeelersExtension(_ contents: Data, inFolder folder: String) async throws {
         try await connection.placeHeelersExtension(contents, inFolder: folder)
+    }
+
+    func readHostFileRange(_ range: RemoteFileRange) async throws -> RemoteFileSlice {
+        try await connection.readHostFileRange(range)
+    }
+
+    func replaceHostTextFile(path: String, expected: Data?, contents: Data?) async throws {
+        try await connection.replaceHostTextFile(path: path, expected: expected, contents: contents)
+    }
+
+    func createHostFolder(path: String) async throws {
+        try await connection.createHostFolder(path: path)
+    }
+
+    func removeEmptyHostFolder(path: String) async throws {
+        try await connection.removeEmptyHostFolder(path: path)
+    }
+
+    func runOpenCodeVersionScript(_ script: Data) async throws -> GitExecResult {
+        try await connection.runOpenCodeVersionScript(script)
     }
 }
 

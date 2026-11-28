@@ -168,9 +168,9 @@ final class StartAgentStore {
     }
 
     /// The Servers the user can dispatch to, grouped into `hostChoices`.
-    let hosts: [Host]
+    private(set) var hosts: [Host]
     /// Each Host once, by its name alone, holding the Servers it offers here.
-    let hostChoices: [LaunchHostChoice]
+    var hostChoices: [LaunchHostChoice] { LaunchHostChoice.grouped(hosts) }
 
     /// Non-nil when the flow was opened from an agent rather than the
     /// Console: Host, workspace, and working directory are already decided,
@@ -186,6 +186,7 @@ final class StartAgentStore {
     /// iOS 27.3 that write invalidates the parent's `@AppStorage`, which
     /// builds the form again, without end.
     @ObservationIgnored private var remembersHostPicks = false
+    @ObservationIgnored private var isApplyingAutomaticPreset = false
 
     var selectedHostID: Host.ID? {
         didSet {
@@ -199,10 +200,12 @@ final class StartAgentStore {
                 }
                 pickedWorkspaceID = nil
                 availableAgentKinds = []
-                selectedAgentKind = nil
+                withAutomaticPreset {
+                    selectedAgentKind = nil
+                    selectedPresetID = nil
+                }
                 availableTemplates = []
                 selectedTemplate = nil
-                selectedPresetID = nil
                 agentDiscoveryState = .idle
                 launchTarget = .existingWorkspace
                 newWorkspaceDirectory = ""
@@ -238,6 +241,21 @@ final class StartAgentStore {
                 return
             }
             selectHost(newValue)
+        }
+    }
+
+    var launchUnavailableMessage: String? { selectedHost.flatMap { capabilities($0).rexAgentLaunchUnavailable } }
+
+    var discoveryHostID: Host.ID? {
+        guard let selectedHost, capabilities(selectedHost).rexAgentLaunchUnavailable == nil else { return nil }
+        return selectedHost.id
+    }
+
+    func updateHosts(_ next: [Host]) {
+        guard next != hosts else { return }
+        hosts = next
+        if let selectedHostID, !next.contains(where: { $0.id == selectedHostID }) {
+            self.selectedHostID = nil
         }
     }
 
@@ -287,30 +305,65 @@ final class StartAgentStore {
     var name: String = ""
     /// The canonical kind selected from the Host availability probe. Each
     /// probe defaults it to the kind last started, when this Host has it,
-    /// else the Host's first.
+    /// else the Host's first. Switching harnesses restores that harness's
+    /// remembered Launch Preset when available.
     var selectedAgentKind: SupportedAgentKind? {
         didSet {
             if selectedAgentKind != nil { selectedTemplate = nil }
-            // Another harness leaves the preset behind.
-            if selectedPresetID != nil,
-                selectedPreset == nil || selectedPreset?.kind != selectedAgentKind
-            {
-                selectedPresetID = nil
+            guard selectedAgentKind != oldValue else { return }
+            if let selectedPreset, selectedPreset.kind == selectedAgentKind {
+                return
             }
+            applyRememberedPreset(for: selectedAgentKind)
         }
     }
     /// The Launch Preset the Agent starts from (#622); nil starts the
-    /// harness as the form describes it. Picking one picks its harness.
+    /// harness as the form describes it. Picking one picks its harness and
+    /// remembers the choice for that harness.
     var selectedPresetID: LaunchPreset.ID? {
         didSet {
-            guard selectedPresetID != nil else { return }
+            guard !isApplyingAutomaticPreset else { return }
+            if selectedPresetID == nil {
+                if oldValue != nil, let selectedAgentKind {
+                    recents.rememberPreset(nil, for: selectedAgentKind)
+                }
+                return
+            }
             guard let selectedPreset else {
-                selectedPresetID = nil
+                withAutomaticPreset { selectedPresetID = nil }
                 return
             }
             if selectedAgentKind != selectedPreset.kind {
                 selectedAgentKind = selectedPreset.kind
             }
+            recents.rememberPreset(selectedPreset.id, for: selectedPreset.kind)
+        }
+    }
+
+    private func withAutomaticPreset(_ body: () -> Void) {
+        let previous = isApplyingAutomaticPreset
+        isApplyingAutomaticPreset = true
+        defer { isApplyingAutomaticPreset = previous }
+        body()
+    }
+
+    private func applyRememberedPreset(for kind: SupportedAgentKind?) {
+        let chosen: LaunchPreset.ID?
+        if let kind {
+            let matching = availablePresets.filter { $0.kind == kind }
+            switch recents.presetChoice(for: kind) {
+            case .preset(let id) where matching.contains(where: { $0.id == id }):
+                chosen = id
+            case .noPreset:
+                chosen = nil
+            case .preset, nil:
+                chosen = matching.count == 1 ? matching[0].id : nil
+            }
+        } else {
+            chosen = nil
+        }
+        withAutomaticPreset {
+            selectedPresetID = chosen
         }
     }
     /// The Template selected in place of a kind.
@@ -355,11 +408,23 @@ final class StartAgentStore {
     /// Remote directory for a New Workspace launch. Optional: empty resolves
     /// to the Host's home directory at submit. Trimmed before use.
     var newWorkspaceDirectory: String = ""
+    var initialBrowseDirectory: String? {
+        if let current = Self.nonEmptyTrimmed(newWorkspaceDirectory), RemoteHostPath.isAbsolute(current) {
+            return current
+        }
+        guard let connection = selectedHostConnection else { return nil }
+        return recents.directory(for: connection)
+    }
+
     /// Selecting a directory switches the draft destination without starting
-    /// an Agent. Dismissing the browser never changes the current selection.
+    /// an Agent, and remembers the path for this Host. Dismissing the browser
+    /// never changes the current selection.
     func applyBrowsedDirectory(_ path: String) {
         guard offersNewWorkspace, RemoteHostPath.isAbsolute(path) else { return }
         newWorkspaceDirectory = path
+        if let connection = selectedHostConnection {
+            recents.rememberDirectory(path, for: connection)
+        }
         selectNewWorkspace()
     }
 
@@ -442,6 +507,7 @@ final class StartAgentStore {
     /// Whether a connected Host serves Worktrees, which a herdr-core Host's
     /// platform decides.
     private let offersConnectedWorktrees: (Host.ID) -> Bool
+    private let capabilities: (Host) -> HostCapabilities
     /// Dispatches the assembled request through the matching Transport
     /// launch variant.
     private let start: (AgentLaunchRequest, LaunchDestination, Host.ID) async throws -> Agent
@@ -485,6 +551,7 @@ final class StartAgentStore {
         recents: RecentLaunchStore = RecentLaunchStore(),
         offersDesktopAppNames: @escaping (Host.ID) -> Bool = { _ in false },
         offersConnectedWorktrees: @escaping (Host.ID) -> Bool = { _ in false },
+        capabilities: @escaping (Host) -> HostCapabilities = \.capabilities,
         presets: @escaping () -> [LaunchPreset] = { [] },
         accountVariable: @escaping (Host.ID, SupportedAgentKind) async throws -> String? = { _, kind in
             kind.configDirectoryVariable
@@ -498,7 +565,7 @@ final class StartAgentStore {
         self.generateWorktreeBranch = generateWorktreeBranch
         let hostChoices = LaunchHostChoice.grouped(hosts)
         self.hosts = hosts
-        self.hostChoices = hostChoices
+        self.capabilities = capabilities
         self.origin = origin
         self.gitHubLaunch = gitHubLaunch
         self.workspacesProvider = workspaces
@@ -640,13 +707,13 @@ final class StartAgentStore {
     /// the Worktree on the branch the user names, from the Workspace's HEAD
     /// (ADR 0032, ADR 0045).
     var worktreeNeedsBranch: Bool {
-        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux
+        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux || selectedHost?.serverKind == .rex
     }
 
     /// Whether the form asks for Workspace and tab names. Its Agent name is
     /// independent of them.
     var offersWorkspaceAndTabNames: Bool {
-        selectedHost?.capabilities.tabNames != false
+        selectedHost.map { capabilities($0).tabNames } != false
     }
 
     /// Whether New Workspace asks for a name. A herdr-core Host has none of its
@@ -658,7 +725,7 @@ final class StartAgentStore {
     /// A herdr-core Host, and a tmux Host, find Agents through the user's
     /// interactive shell (ADR 0032), not the Host's PATH.
     var discoversThroughUserShell: Bool {
-        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux
+        selectedHost?.serverKind == .herdrCore || selectedHost?.serverKind == .tmux || selectedHost?.serverKind == .rex
     }
 
     private var selectedHost: Host? {
@@ -760,7 +827,7 @@ final class StartAgentStore {
 
     /// Whether the form is complete enough to dispatch.
     var canSubmit: Bool {
-        selectedHostID != nil && hasLaunchTarget
+        discoveryHostID != nil && hasLaunchTarget
             && nameErrorMessage == nil
             && hasCompleteAgentChoice
             && worktreeBranchErrorMessage == nil
@@ -815,11 +882,13 @@ final class StartAgentStore {
 
     func discoverAgents() async {
         availableAgentKinds = []
-        selectedAgentKind = nil
-        selectedPresetID = nil
+        withAutomaticPreset {
+            selectedAgentKind = nil
+            selectedPresetID = nil
+        }
         availableTemplates = []
         selectedTemplate = nil
-        guard let hostID = selectedHostID else {
+        guard let hostID = discoveryHostID else {
             agentDiscoveryState = .idle
             return
         }
@@ -827,11 +896,11 @@ final class StartAgentStore {
         // Heeler's own list does not depend on this one, so an ask that fails
         // leaves the form with Heeler's agents.
         let templates = (try? await discoverTemplates(hostID)) ?? []
-        guard selectedHostID == hostID else { return }
+        guard !Task.isCancelled, discoveryHostID == hostID else { return }
         availableTemplates = templates
         do {
             let kinds = try await discoverAgentKinds(hostID)
-            guard selectedHostID == hostID else { return }
+            guard !Task.isCancelled, discoveryHostID == hostID else { return }
             availableAgentKinds = kinds
             if let remembered = recents.agentKind, kinds.contains(remembered) {
                 selectedAgentKind = remembered
@@ -841,10 +910,10 @@ final class StartAgentStore {
             if kinds.isEmpty { selectedTemplate = templates.first }
             agentDiscoveryState = .loaded
         } catch is CancellationError {
-            guard selectedHostID == hostID else { return }
+            guard !Task.isCancelled, discoveryHostID == hostID else { return }
             agentDiscoveryState = .idle
         } catch {
-            guard selectedHostID == hostID else { return }
+            guard !Task.isCancelled, discoveryHostID == hostID else { return }
             selectedTemplate = templates.first
             agentDiscoveryState = .failed(Self.discoveryMessage(for: error))
         }
@@ -856,7 +925,7 @@ final class StartAgentStore {
     func submit() async {
         guard
             !isStarting,
-            let hostID = selectedHostID,
+            let hostID = discoveryHostID,
             let launch = pendingLaunch,
             worktreeBranchErrorMessage == nil,
             !isMissingNeededBranch,
@@ -999,7 +1068,14 @@ final class StartAgentStore {
             } else if let workspaceID {
                 recents.rememberWorkspace(workspaceID, for: hostID)
             }
-            if case .kind(let kind, _, _) = launch { recents.rememberAgentKind(kind) }
+            if case .kind(let kind, _, _) = launch {
+                recents.rememberAgentKind(kind)
+                if let preset {
+                    recents.rememberPreset(preset.id, for: kind)
+                } else if availablePresets.contains(where: { $0.kind == kind }) {
+                    recents.rememberPreset(nil, for: kind)
+                }
+            }
             let startedID = ConsoleAgent.ID(hostID: hostID, paneID: agent.paneID)
             // The wait is bounded; on timeout the owner still navigates and
             // the row catches up with the next resync.
